@@ -93,7 +93,7 @@ void udp_front_loop(yield_context yield) {
 	/*
 	 * UDP accept loop. Wait for read readiness, then use recvmsg() to get the ancillary IPV6_ORIGDSTADDR
 	 * address, bind and connect a new socket. There is an unavoidable race condition between socket
-	 * creation and multiple datagram being sent on a new connection, this loop needs to lookup sockets
+	 * creation and multiple datagram being sent on a new connection, so this loop needs to lookup sockets
 	 * by endpoints tuple, and possibly send datagrams over an already existing proxied socket.
 	 */
 	while (1) try {
