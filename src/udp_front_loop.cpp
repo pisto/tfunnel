@@ -45,7 +45,7 @@ struct proxied_udp_client: proxied_udp {
 	                                         endpoints(local_endpoint(), remote_endpoint()) {}
 
 	void remember() override {
-		proxied_socket::remember();
+		proxied_udp::remember();
 		tuples_all.emplace(endpoints, std::weak_ptr(shptr<proxied_udp_client>()));
 	}
 
@@ -56,6 +56,7 @@ struct proxied_udp_client: proxied_udp {
 	void on_write(size_t len) override {
 		is_stream = true;
 		last_activity = clock::now();
+		proxied_udp::on_write(len);
 	}
 
 	void wait_timeout() {
