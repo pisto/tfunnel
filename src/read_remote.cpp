@@ -84,8 +84,7 @@ template<bool client> void read_remote(yield_context yield) try {
 	if (e.code() == boost::asio::error::operation_aborted) return;
 	if (e.code() == boost::asio::error::eof) {
 		if (client) throw system_error(e.code(), "the proxy closed the connection");
-		asio.stop();
-		return;
+		_Exit(0);
 	}
 	throw;
 }
