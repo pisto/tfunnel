@@ -33,4 +33,8 @@ template<typename T> void send_packet(std::shared_ptr<T> data) {
 			}));
 }
 
+void send_udp_port_unreachable(boost::asio::io_context::strand& strand,
+                               const boost::asio::ip::udp::endpoint& local,
+                               const boost::asio::ip::udp::endpoint& remote);
+
 }

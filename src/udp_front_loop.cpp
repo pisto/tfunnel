@@ -58,6 +58,27 @@ struct proxied_udp_client: proxied_udp {
 		proxied_udp::on_write(len);
 	}
 
+	void remote_eof(bool graceful) override {
+		try { send_udp_port_unreachable(strand_w, std::get<0>(endpoints), std::get<1>(endpoints)); }
+		catch (const system_error& e) {
+			//fallback if I do not have CAP_NET_RAW
+			static bool user_warned = false;
+			if (!user_warned) {
+				collect_ostream(std::cerr) << "Warning: cannot forward ICMP port unreachable: " << e.what() << std::endl;
+				user_warned = true;
+			}
+			proxied_udp::remote_eof(graceful);
+			return;
+		}
+		//make the socket linger for 1 sec to avoid reopening another UDP socket immediately if we keep receiving data
+		timeout.expires_after(std::chrono::seconds(1));
+		timeout.async_wait(bind_executor(strand_w, [this_ = shptr()](const error_code& ec) {
+			if (ec) return;
+			this_->close(ignore_ec());
+		}));
+		forget();
+	}
+
 	void wait_timeout() {
 		timeout.async_wait([this_weak = std::weak_ptr(shptr<proxied_udp_client>())](const error_code& ec) {
 			if (ec) return;
