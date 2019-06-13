@@ -35,6 +35,7 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 
 	using opcodes = socket_opcodes<socket>;
 	using socket_type = socket;
+	using protocol_type = typename socket::protocol_type;
 	const uint64_t id : tfunnel::header::ID_BITS;
 
 	static auto find(uint64_t id) {
@@ -43,7 +44,10 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 	}
 
 	//constructor for proxy end, set the id and create a new socket
-	proxied_socket(uint64_t id): socket(asio), id(id), strand_w(asio), strand_r(asio) {}
+	proxied_socket(uint64_t id) try : socket(asio, protocol_type::v6()), id(id), strand_w(asio), strand_r(asio) {}
+	catch (const boost::system::system_error& e) {
+		send_packet(std::make_shared<header>(opcodes::close_socket, id, 0));
+	}
 
 	//constructor for client end, use a socket new socket and generate an id
 	proxied_socket(socket&& s): socket(std::move(s)), id(id), strand_w(asio), strand_r(asio) {
