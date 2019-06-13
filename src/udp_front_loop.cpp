@@ -12,11 +12,11 @@ using namespace boost::system;
 namespace tfunnel {
 
 namespace {
+
 template<typename socket> bool sockopt(socket& s, int level, int opt) {
 	int fd = s.native_handle(), yes = 1;
 	return !setsockopt(fd, level, opt, &yes, sizeof(yes));
 };
-}
 
 /*
  * Proxied UDP connection for the client. Adds on top of proxied_udp the following features:
@@ -80,6 +80,8 @@ struct proxied_udp_client: proxied_udp {
 	}
 
 };
+
+}
 
 void udp_front_loop(yield_context yield) {
 	ip::udp::socket udp_front(asio, ip::udp::endpoint(ip::udp::v6(), port));
