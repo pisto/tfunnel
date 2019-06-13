@@ -23,7 +23,7 @@ void handle_new_data_close(bool client, const header& h, yield_context yield) {
 	switch (h.opcode) {
 		case ops::new_socket:
 			if (h.len || s) invalid_data(client);
-			s = std::make_shared<proxied_socket_type>(socket_type(asio), uint64_t(h.id));
+			s = std::make_shared<proxied_socket_type>(uint64_t(h.id));
 			s->remember();
 			{
 				new_connection_data ncdata;

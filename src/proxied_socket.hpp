@@ -42,9 +42,11 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 		return found != all.end() ? found->second.lock() : nullptr;
 	}
 
-	proxied_socket(socket&& s, uint64_t id): socket(std::move(s)), id(id), strand_w(asio), strand_r(asio) {}
+	//constructor for proxy end, set the id and create a new socket
+	proxied_socket(uint64_t id): socket(asio), id(id), strand_w(asio), strand_r(asio) {}
 
-	proxied_socket(socket&& s): proxied_socket(std::move(s), index.v++) {
+	//constructor for client end, use a socket new socket and generate an id
+	proxied_socket(socket&& s): socket(std::move(s)), id(id), strand_w(asio), strand_r(asio) {
 		std::shared_ptr<char[]> packet(new char[sizeof(header) + sizeof(new_connection_data)]);
 		*reinterpret_cast<header*>(packet.get()) = header(opcodes::new_socket, id, sizeof(new_connection_data));
 		auto ep = this->local_endpoint();
