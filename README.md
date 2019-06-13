@@ -11,9 +11,7 @@ tfunnel It is a replacement for [sshuttle](https://github.com/sshuttle/sshuttle)
 * simple
 * fast (?)
 * better TCP reset handling compared to sshuttle
-
-TODO
-* forward ICMP errors for UDP "connections"
+* forwarding of ICMP "port unreachable" messages for UDP "connections"
 
 # Running
 Better documentation coming soon, I told you.
