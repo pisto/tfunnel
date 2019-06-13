@@ -1,6 +1,5 @@
 #include <iostream>
 #include <chrono>
-#include <netinet/in.h>
 #include <boost/asio.hpp>
 #include <boost/asio/spawn.hpp>
 #include "env.hpp"
@@ -12,11 +11,6 @@ using namespace boost::system;
 namespace tfunnel {
 
 namespace {
-
-template<typename socket> bool sockopt(socket& s, int level, int opt) {
-	int fd = s.native_handle(), yes = 1;
-	return !setsockopt(fd, level, opt, &yes, sizeof(yes));
-};
 
 /*
  * Proxied UDP connection for the client. Adds on top of proxied_udp the following features:
@@ -91,11 +85,11 @@ struct proxied_udp_client: proxied_udp {
 void udp_front_loop(yield_context yield) {
 	ip::udp::socket udp_front(asio, ip::udp::endpoint(ip::udp::v6(), port));
 	udp_front.set_option(socket_base::reuse_address(true));
-	if (!sockopt(udp_front, SOL_IPV6, IPV6_TRANSPARENT))
+	if (!setsockopt(udp_front, SOL_IPV6, IPV6_TRANSPARENT))
 		throw std::system_error(errno, std::generic_category(), "cannot set option IPV6_TRANSPARENT on UDP socket");
-	if (!sockopt(udp_front, SOL_IPV6, IPV6_RECVORIGDSTADDR))
+	if (!setsockopt(udp_front, SOL_IPV6, IPV6_RECVORIGDSTADDR))
 		throw std::system_error(errno, std::generic_category(), "cannot set option IPV6_RECVORIGDSTADDR on UDP socket");
-	if (!sockopt(udp_front, SOL_IP, IP_RECVORIGDSTADDR))
+	if (!setsockopt(udp_front, SOL_IP, IP_RECVORIGDSTADDR))
 		throw std::system_error(errno, std::generic_category(), "cannot set option IP_RECVORIGDSTADDR on UDP socket");
 	/*
 	 * UDP accept loop. Wait for read readiness, then use recvmsg() to get the ancillary IPV6_ORIGDSTADDR
@@ -147,7 +141,7 @@ void udp_front_loop(yield_context yield) {
 		if (!proxied) try {
 			ip::udp::socket udpsock(asio, ip::udp::v6());
 			udpsock.set_option(socket_base::reuse_address(true));
-			if (!sockopt(udpsock, SOL_IPV6, IPV6_TRANSPARENT))
+			if (!setsockopt(udpsock, SOL_IPV6, IPV6_TRANSPARENT))
 				throw std::logic_error("cannot set option IPV6_TRANSPARENT on UDP socket");
 			udpsock.bind(local);
 			udpsock.connect(remote);

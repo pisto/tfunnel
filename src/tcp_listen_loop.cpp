@@ -1,5 +1,4 @@
 #include <iostream>
-#include <netinet/in.h>
 #include <boost/asio.hpp>
 #include <boost/asio/spawn.hpp>
 #include "env.hpp"
@@ -10,16 +9,9 @@ using namespace boost::system;
 
 namespace tfunnel {
 
-namespace {
-template<typename socket> bool sockopt(socket& s, int level, int opt) {
-	int fd = s.native_handle(), yes = 1;
-	return !setsockopt(fd, level, opt, &yes, sizeof(yes));
-};
-}
-
 void tcp_listen_loop(yield_context yield) {
 	ip::tcp::acceptor tcp_listen(asio, ip::tcp::endpoint(ip::tcp::v6(), port));
-	if (!sockopt(tcp_listen, SOL_IPV6, IPV6_TRANSPARENT))
+	if (!setsockopt(tcp_listen, SOL_IPV6, IPV6_TRANSPARENT))
 		throw std::system_error(errno, std::generic_category(), "cannot set option IPV6_TRANSPARENT on TCP socket");
 	/*
 	 * TCP accept loop. Nothing complicated here, except error handling (no idea about all the possible
