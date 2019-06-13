@@ -62,7 +62,7 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 		all.erase(uint64_t(id));
 	}
 
-	void spawn_read(typename socket::endpoint_type remote = {}) {
+	void spawn_connect_read(typename socket::endpoint_type remote) {
 		boost::asio::spawn(strand_r, [this_ = this->shptr(), remote](boost::asio::yield_context yield) {
 			try {
 				if (!remote.address().is_unspecified()) this_->async_connect(remote, yield);

@@ -23,7 +23,7 @@ void tcp_listen_loop(yield_context yield) {
 			tcp_listen.async_accept(accepted, yield);
 			auto proxied = std::make_shared<proxied_tcp>(std::move(accepted));
 			proxied->remember();
-			proxied->spawn_read();
+			proxied->spawn_connect_read({});
 		} catch (const system_error& e) {
 			using namespace boost::asio::error;
 			switch (e.code().value()) {

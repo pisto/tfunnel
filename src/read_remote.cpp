@@ -28,7 +28,7 @@ void handle_new_data_close(bool client, const header& h, yield_context yield) {
 			{
 				new_connection_data ncdata;
 				async_read(input, buffer((void*)&ncdata, sizeof(ncdata)), yield);
-				s->spawn_read({ ip::address_v6(ncdata.ipv6), ncdata.port });
+				s->spawn_connect_read({ ip::address_v6(ncdata.ipv6), ncdata.port });
 			}
 			break;
 		case ops::data:

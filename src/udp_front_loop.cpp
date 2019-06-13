@@ -147,7 +147,7 @@ void udp_front_loop(yield_context yield) {
 			udpsock.connect(remote);
 			proxied = std::make_shared<proxied_udp_client>(std::move(udpsock));
 			proxied->remember();
-			proxied->spawn_read();
+			proxied->spawn_connect_read({});
 			proxied->wait_timeout();
 		} catch (const system_error& e) {
 			collect_ostream(std::cerr) << "error in new UDP socket: " << e.what() << std::endl;
