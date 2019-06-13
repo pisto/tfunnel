@@ -22,10 +22,6 @@ enum opcodes {
 	DIE,
 
 	OPS_END,
-	TCP_OPS_START = TCP_NEW,
-	TCP_OPS_END = UDP_NEW,
-	UDP_OPS_START = UDP_NEW,
-	UDP_OPS_END = DIE,
 };
 
 struct header {

@@ -34,6 +34,7 @@ template<typename socket> struct socket_opcodes {
 template<typename socket> struct proxied_socket: std::enable_shared_from_this<proxied_socket<socket>>, socket {
 
 	using opcodes = socket_opcodes<socket>;
+	using socket_type = socket;
 	const uint64_t id : tfunnel::header::ID_BITS;
 
 	static auto find(uint64_t id) {
