@@ -128,7 +128,6 @@ void udp_front_loop(yield_context yield) {
 				to_v4 = (sockaddr_in*)CMSG_DATA(cmsg);
 		if (!to_v6 && !to_v4) throw std::logic_error("cannot obtain origin address in new UDP packet");
 
-		std::shared_ptr<proxied_udp_client> proxied;
 		using ipv6 = ip::address_v6;
 		ip::udp::endpoint local;
 		if (to_v6) local = { ipv6(reinterpret_cast<ipv6::bytes_type&>(to_v6->sin6_addr)), ntohs(to_v6->sin6_port) };
@@ -137,20 +136,23 @@ void udp_front_loop(yield_context yield) {
 			local = { ip::make_address_v6(ip::v4_mapped, ipv4(ntohl(to_v4->sin_addr.s_addr))), ntohs(to_v4->sin_port) };
 		}
 		ip::udp::endpoint remote(ipv6(reinterpret_cast<ipv6::bytes_type&>(from.sin6_addr)), ntohs(from.sin6_port));
-		proxied = proxied_udp_client::find(local, remote);
-		if (!proxied) try {
-			ip::udp::socket udpsock(asio, ip::udp::v6());
-			udpsock.set_option(socket_base::reuse_address(true));
-			if (!setsockopt(udpsock, SOL_IPV6, IPV6_TRANSPARENT))
-				throw std::logic_error("cannot set option IPV6_TRANSPARENT on UDP socket");
-			udpsock.bind(local);
-			udpsock.connect(remote);
-			proxied = std::make_shared<proxied_udp_client>(std::move(udpsock));
-			proxied->remember();
-			proxied->spawn_connect_read({});
-			proxied->wait_timeout();
+		std::shared_ptr<proxied_udp_client> proxied;
+		try {
+			proxied = proxied_udp_client::find(local, remote);
+			if (!proxied) {
+				ip::udp::socket udpsock(asio, ip::udp::v6());
+				udpsock.set_option(socket_base::reuse_address(true));
+				if (!setsockopt(udpsock, SOL_IPV6, IPV6_TRANSPARENT))
+					throw std::logic_error("cannot set option IPV6_TRANSPARENT on UDP socket");
+				udpsock.bind(local);
+				udpsock.connect(remote);
+				proxied = std::make_shared<proxied_udp_client>(std::move(udpsock));
+				proxied->remember();
+				proxied->spawn_connect_read({});
+				proxied->wait_timeout();
+			}
 		} catch (const system_error& e) {
-			collect_ostream(std::cerr) << "error in new UDP socket: " << e.what() << std::endl;
+			collect_ostream(std::cerr) << "Warning: error in new UDP socket: " << e.what() << std::endl;
 			continue;
 		}
 		*reinterpret_cast<header*>(packet.get()) = header(UDP_DATA, proxied->id, datalen);
@@ -163,7 +165,7 @@ void udp_front_loop(yield_context yield) {
 			case network_down:
 			case host_unreachable:
 			case network_unreachable:
-				collect_ostream(std::cerr) << "error in new UDP packet: " << e.what() << std::endl;
+				collect_ostream(std::cerr) << "Warning: error in new UDP packet: " << e.what() << std::endl;
 				break;
 			default: throw;
 		}

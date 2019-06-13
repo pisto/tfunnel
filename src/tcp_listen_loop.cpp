@@ -21,9 +21,14 @@ void tcp_listen_loop(yield_context yield) {
 		try {
 			ip::tcp::socket accepted(asio);
 			tcp_listen.async_accept(accepted, yield);
-			auto proxied = std::make_shared<proxied_tcp>(std::move(accepted));
-			proxied->remember();
-			proxied->spawn_connect_read({});
+			try {
+				auto proxied = std::make_shared<proxied_tcp>(std::move(accepted));
+				proxied->remember();
+				proxied->spawn_connect_read({});
+			} catch (const system_error& e) {
+				collect_ostream(std::cerr) << "Warning: error in new TCP connection: " << e.what() << std::endl;
+				continue;
+			}
 		} catch (const system_error& e) {
 			using namespace boost::asio::error;
 			switch (e.code().value()) {
@@ -34,7 +39,7 @@ void tcp_listen_loop(yield_context yield) {
 				case network_down:
 				case host_unreachable:
 				case network_unreachable:
-					collect_ostream(std::cerr) << "error in new TCP connection: " << e.what() << std::endl;
+					collect_ostream(std::cerr) << "Warning: error in new TCP connection: " << e.what() << std::endl;
 					break;
 				default: throw;
 			}
