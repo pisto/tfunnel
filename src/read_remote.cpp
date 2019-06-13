@@ -23,8 +23,8 @@ void handle_new_data_close(bool client, const header& h, yield_context yield) {
 	switch (h.opcode) {
 		case ops::new_socket:
 		{
-			if (client || h.len || s) invalid_data(client);
 			new_connection_data ncdata;
+			if (client || h.len != sizeof(ncdata) || s) invalid_data(client);
 			async_read(input, buffer((void*)&ncdata, sizeof(ncdata)), yield);
 			try {
 				s = std::make_shared<proxied_socket_type>(uint64_t(h.id));
