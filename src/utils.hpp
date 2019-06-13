@@ -11,9 +11,9 @@ inline boost::system::error_code& ignore_ec() {
 
 #include <netinet/in.h>
 
-template<typename socket> bool setsockopt(socket& s, int level, int opt) {
-	int fd = s.native_handle(), yes = 1;
-	return !setsockopt(fd, level, opt, &yes, sizeof(yes));
+template<typename socket> bool setsockopt(socket& s, int level, int opt, int value = 1) {
+	int fd = s.native_handle();
+	return !setsockopt(fd, level, opt, &value, sizeof(value));
 };
 
 #endif
