@@ -55,6 +55,10 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 		all.insert({ id, std::weak_ptr(this->shptr()) });
 	}
 
+	virtual void forget() {
+		all.erase(uint64_t(id));
+	}
+
 	void spawn_read(typename socket::endpoint_type remote = {}) {
 		boost::asio::spawn(strand_r, [this_ = this->shptr(), remote](boost::asio::yield_context yield) {
 			try {
@@ -83,6 +87,7 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 			if (graceful) this_->shutdown(boost::asio::socket_base::shutdown_send, ignore_ec());
 			else this_->close(ignore_ec());
 		});
+		if (!graceful) forget();
 	}
 
 	virtual void local_eof(bool graceful) {

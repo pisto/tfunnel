@@ -49,6 +49,11 @@ struct proxied_udp_client: proxied_udp {
 		tuples_all.emplace(endpoints, std::weak_ptr(shptr<proxied_udp_client>()));
 	}
 
+	void forget() override {
+		tuples_all.erase(endpoints);
+		proxied_udp::forget();
+	}
+
 	bool on_read(size_t len) override {
 		last_activity = clock::now();
 		return proxied_udp::on_read(len);
