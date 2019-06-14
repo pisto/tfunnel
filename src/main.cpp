@@ -27,6 +27,7 @@ io_context::strand input_strand(asio), output_strand(asio);
 //configuration
 namespace tfunnel {
 uint16_t port, udp_timeout, udp_timeout_stream;
+bool verbose = false;
 }
 
 int main(int argc, char** argv) try {
@@ -42,6 +43,7 @@ int main(int argc, char** argv) try {
 		using namespace boost::program_options;
 		options_description options("tfunnel options");
 		options.add_options()
+				(",v", "enable verbose output")
 				(",p", value(&port)->default_value(0), "start in client mode and listen on this port")
 				("udp_timeout", value(&udp_timeout)->default_value(udp_timeout),
 						"timeout for unanswered UDP connections")
@@ -55,6 +57,7 @@ int main(int argc, char** argv) try {
 			std::cout << options;
 			return 0;
 		}
+		if (vm.count("v")) verbose = true;
 	}
 
 	if (port) {

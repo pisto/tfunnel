@@ -15,6 +15,7 @@ extern boost::asio::io_context::strand input_strand, output_strand;
 namespace tfunnel {
 
 extern uint16_t port, udp_timeout, udp_timeout_stream;
+extern bool verbose;
 
 void tcp_listen_loop(boost::asio::yield_context yield);
 void udp_front_loop(boost::asio::yield_context yield);
