@@ -21,7 +21,7 @@ void tcp_listen_loop(yield_context yield) {
 		try {
 			ip::tcp::socket accepted(asio);
 			tcp_listen.async_accept(accepted, yield);
-			auto remote = accepted.remote_endpoint(), local = accepted.remote_endpoint();
+			auto remote = accepted.remote_endpoint(), local = accepted.local_endpoint();
 			try {
 				auto proxied = std::make_shared<proxied_tcp>(std::move(accepted));
 				proxied->remember();

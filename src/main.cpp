@@ -43,7 +43,7 @@ int main(int argc, char** argv) try {
 		using namespace boost::program_options;
 		options_description options("tfunnel options");
 		options.add_options()
-				(",v", "enable verbose output")
+				("verbose,v", "enable verbose output")
 				(",p", value(&port)->default_value(0), "start in client mode and listen on this port")
 				("udp_timeout", value(&udp_timeout)->default_value(udp_timeout),
 						"timeout for unanswered UDP connections")
@@ -57,7 +57,7 @@ int main(int argc, char** argv) try {
 			std::cout << options;
 			return 0;
 		}
-		if (vm.count("v")) verbose = true;
+		if (vm.count("verbose")) verbose = true;
 	}
 
 	if (port) {
