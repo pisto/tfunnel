@@ -122,13 +122,11 @@ void send_udp_port_unreachable_v6(io_context::strand& strand,
 }
 
 void send_udp_port_unreachable(io_context::strand& strand,
-                               const boost::asio::ip::udp::endpoint& local,
-                               const boost::asio::ip::udp::endpoint& remote) try {
-	send_udp_port_unreachable_v4(strand,
-			{ boost::asio::ip::make_address_v4(boost::asio::ip::v4_mapped, local.address().to_v6()), local.port() },
-			{ boost::asio::ip::make_address_v4(boost::asio::ip::v4_mapped, remote.address().to_v6()), remote.port() });
-} catch (const boost::asio::ip::bad_address_cast&) {
-	send_udp_port_unreachable_v6(strand, local, remote);
+                               boost::asio::ip::udp::endpoint local,
+                               boost::asio::ip::udp::endpoint remote) {
+	local = try_cast_ipv4(local), remote = try_cast_ipv4(remote);
+	if (local.address().is_v4() && remote.address().is_v4()) send_udp_port_unreachable_v4(strand, local, remote);
+	else send_udp_port_unreachable_v6(strand, local, remote);
 }
 
 }
