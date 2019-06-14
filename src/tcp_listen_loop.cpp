@@ -21,12 +21,14 @@ void tcp_listen_loop(yield_context yield) {
 		try {
 			ip::tcp::socket accepted(asio);
 			tcp_listen.async_accept(accepted, yield);
+			auto remote = accepted.remote_endpoint(), local = accepted.remote_endpoint();
 			try {
 				auto proxied = std::make_shared<proxied_tcp>(std::move(accepted));
 				proxied->remember();
 				proxied->spawn_connect_read({});
 			} catch (const system_error& e) {
-				collect_ostream(std::cerr) << "Warning: error in new TCP connection: " << e.what() << std::endl;
+				collect_ostream(std::cerr) << "Warning: error in new TCP connection (" << try_cast_ipv4(remote)
+				                           << " => " << try_cast_ipv4(local) << "): " << e.what() << std::endl;
 				continue;
 			}
 		} catch (const system_error& e) {

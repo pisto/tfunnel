@@ -64,7 +64,8 @@ struct proxied_udp_client: proxied_udp {
 			//fallback if I do not have CAP_NET_RAW
 			static bool user_warned = false;
 			if (!user_warned) {
-				collect_ostream(std::cerr) << "Warning: cannot forward ICMP port unreachable: " << e.what() << std::endl;
+				collect_ostream(std::cerr) << "Warning: cannot forward ICMP port unreachable: " << e.what()
+				                           << " (you probably lack CAP_NET_RAW capability)" << std::endl;
 				user_warned = true;
 			}
 			proxied_udp::remote_eof(graceful);
@@ -150,13 +151,13 @@ void udp_front_loop(yield_context yield) {
 		if (!to_v6 && !to_v4) throw std::logic_error("cannot obtain origin address in new UDP packet");
 
 		using ipv6 = ip::address_v6;
+		ip::udp::endpoint remote(ipv6(reinterpret_cast<ipv6::bytes_type&>(from.sin6_addr)), ntohs(from.sin6_port));
 		ip::udp::endpoint local;
 		if (to_v6) local = { ipv6(reinterpret_cast<ipv6::bytes_type&>(to_v6->sin6_addr)), ntohs(to_v6->sin6_port) };
 		else {
 			using ipv4 = ip::address_v4;
 			local = { ip::make_address_v6(ip::v4_mapped, ipv4(ntohl(to_v4->sin_addr.s_addr))), ntohs(to_v4->sin_port) };
 		}
-		ip::udp::endpoint remote(ipv6(reinterpret_cast<ipv6::bytes_type&>(from.sin6_addr)), ntohs(from.sin6_port));
 		std::shared_ptr<proxied_udp_client> proxied;
 		try {
 			proxied = proxied_udp_client::find(local, remote);
@@ -173,7 +174,8 @@ void udp_front_loop(yield_context yield) {
 				proxied->wait_timeout();
 			}
 		} catch (const system_error& e) {
-			collect_ostream(std::cerr) << "Warning: error in new UDP socket: " << e.what() << std::endl;
+			collect_ostream(std::cerr) << "Warning: error in new UDP socket (" << try_cast_ipv4(remote) << " => "
+			                           << try_cast_ipv4(local) << "): " << e.what() << std::endl;
 			continue;
 		}
 		*reinterpret_cast<header*>(packet.get()) = header(UDP_DATA, proxied->id, datalen);
