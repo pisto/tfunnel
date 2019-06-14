@@ -7,6 +7,16 @@ inline boost::system::error_code& ignore_ec() {
 	return ignored;
 }
 
+inline boost::asio::ip::address try_cast_ipv4(boost::asio::ip::address addr) try {
+	return boost::asio::ip::make_address_v4(boost::asio::ip::v4_mapped, addr.to_v6());
+} catch (const boost::asio::ip::bad_address_cast&) {
+	return addr;
+}
+
+template<typename Proto> auto try_cast_ipv4(boost::asio::ip::basic_endpoint<Proto> ep) {
+	return boost::asio::ip::basic_endpoint<Proto>(try_cast_ipv4(ep.address()), ep.port());
+}
+
 #ifndef PROXY_ONLY
 
 #include <netinet/in.h>
