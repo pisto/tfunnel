@@ -59,15 +59,15 @@ struct proxied_udp_client: proxied_udp {
 	}
 
 	void remote_eof(bool graceful) override {
-		try { send_udp_port_unreachable(strand_w, std::get<0>(endpoints), std::get<1>(endpoints)); }
-		catch (const system_error& e) {
+		try {
+			send_udp_port_unreachable(strand_w, std::get<0>(endpoints), std::get<1>(endpoints));
+			if (verbose) collect_ostream(std::cerr) << "UDP " << try_cast_ipv4(std::get<1>(endpoints)) << " => "
+			                                        << try_cast_ipv4(std::get<0>(endpoints))
+			                                        << " : forwarded ICMP unreachable" << std::endl;
+		} catch (const system_error& e) {
 			//fallback if I do not have CAP_NET_RAW
-			static bool user_warned = false;
-			if (!user_warned) {
-				collect_ostream(std::cerr) << "Warning: cannot forward ICMP port unreachable: " << e.what()
-				                           << " (you probably lack CAP_NET_RAW capability)" << std::endl;
-				user_warned = true;
-			}
+			collect_ostream(std::cerr) << "ICMP : cannot send UDP port unreachable message (" << e.what() << ')'
+			                           << std::endl;
 			proxied_udp::remote_eof(graceful);
 			return;
 		}
@@ -89,6 +89,9 @@ struct proxied_udp_client: proxied_udp {
 			auto interval = this_->is_stream ? udp_timeout_stream : udp_timeout;
 			if (from_last_activity > std::chrono::seconds(interval)) {
 				this_->local_eof(false);
+				if (verbose) collect_ostream(std::cerr) << "UDP " << try_cast_ipv4(std::get<1>(this_->endpoints))
+				                                        << " => " << try_cast_ipv4(std::get<0>(this_->endpoints))
+				                                        << " : timed out" << std::endl;
 				return;
 			}
 			this_->timeout.expires_at(this_->last_activity + std::chrono::seconds(interval));
@@ -172,10 +175,13 @@ void udp_front_loop(yield_context yield) {
 				proxied->remember();
 				proxied->spawn_connect_read({});
 				proxied->wait_timeout();
+				if (verbose) collect_ostream(std::cerr) << "UDP " << try_cast_ipv4(remote) << " => "
+				                                        << try_cast_ipv4(local) << " : opened" << std::endl;
 			}
 		} catch (const system_error& e) {
-			collect_ostream(std::cerr) << "Warning: error in new UDP socket (" << try_cast_ipv4(remote) << " => "
-			                           << try_cast_ipv4(local) << "): " << e.what() << std::endl;
+			collect_ostream(std::cerr) << "UDP " << try_cast_ipv4(remote) << " => "
+			                           << try_cast_ipv4(local) << " : cannot initialize connection (" << e.what() << ')'
+			                           << std::endl;
 			continue;
 		}
 		*reinterpret_cast<header*>(packet.get()) = header(UDP_DATA, proxied->id, datalen);
@@ -188,7 +194,7 @@ void udp_front_loop(yield_context yield) {
 			case network_down:
 			case host_unreachable:
 			case network_unreachable:
-				collect_ostream(std::cerr) << "Warning: error in new UDP packet: " << e.what() << std::endl;
+				collect_ostream(std::cerr) << "UDP : cannot receive packet (" << e.what() << ')' << std::endl;
 				break;
 			default: throw;
 		}

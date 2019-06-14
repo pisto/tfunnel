@@ -26,9 +26,11 @@ void tcp_listen_loop(yield_context yield) {
 				auto proxied = std::make_shared<proxied_tcp>(std::move(accepted));
 				proxied->remember();
 				proxied->spawn_connect_read({});
+				if (verbose) collect_ostream(std::cerr) << "TCP " << try_cast_ipv4(remote) << " => "
+				                                        << try_cast_ipv4(local) << " : opened" << std::endl;
 			} catch (const system_error& e) {
-				collect_ostream(std::cerr) << "Warning: error in new TCP connection (" << try_cast_ipv4(remote)
-				                           << " => " << try_cast_ipv4(local) << "): " << e.what() << std::endl;
+				collect_ostream(std::cerr) << "TCP " << try_cast_ipv4(remote) << " => " << try_cast_ipv4(local)
+				                           << " : error opening (" << e.what() << ')' << std::endl;
 				continue;
 			}
 		} catch (const system_error& e) {
@@ -41,7 +43,7 @@ void tcp_listen_loop(yield_context yield) {
 				case network_down:
 				case host_unreachable:
 				case network_unreachable:
-					collect_ostream(std::cerr) << "Warning: error in new TCP connection: " << e.what() << std::endl;
+					collect_ostream(std::cerr) << "TCP : cannot accept connection (" << e.what() << ')' << std::endl;
 					break;
 				default: throw;
 			}

@@ -26,12 +26,14 @@ void handle_new_data_close(bool client, const header& h, yield_context yield) {
 			new_connection_data ncdata;
 			if (client || h.len != sizeof(ncdata) || s) invalid_data(client);
 			async_read(input, buffer((void*)&ncdata, sizeof(ncdata)), yield);
+			typename proxied_socket_type::endpoint_type remote(ip::address_v6(ncdata.ipv6), ncdata.port);
 			try {
 				s = std::make_shared<proxied_socket_type>(uint64_t(h.id));
 				s->remember();
-				s->spawn_connect_read({ ip::address_v6(ncdata.ipv6), ncdata.port });
+				s->spawn_connect_read(remote);
 			} catch (const system_error& e) {
-				collect_ostream(std::cerr) << "Warning: cannot open socket on proxy: " << e.what() << std::endl;
+				collect_ostream(std::cerr) << "TCP => " << try_cast_ipv4(remote)
+				                           << " : cannot open connection on proxy (" << e.what() << ')' << std::endl;
 			}
 		}
 			break;
