@@ -12,6 +12,8 @@ namespace tfunnel {
 void tcp_listen_loop(yield_context yield) {
 	ip::tcp::acceptor tcp_listen(asio, ip::tcp::v6());
 	tcp_listen.set_option(socket_base::reuse_address(true));
+	if (!setsockopt(tcp_listen, SOL_SOCKET, SO_MARK, 3))
+		throw std::system_error(errno, std::generic_category(), "cannot set fwmark=3 on TCP listen socket");
 	if (!setsockopt(tcp_listen, SOL_SOCKET, SO_REUSEPORT))
 		throw std::system_error(errno, std::generic_category(), "cannot set SO_REUSEPORT on TCP listen socket");
 	if (!setsockopt(tcp_listen, SOL_IPV6, IPV6_TRANSPARENT))
@@ -28,6 +30,8 @@ void tcp_listen_loop(yield_context yield) {
 			tcp_listen.async_accept(accepted, yield);
 			auto remote = accepted.remote_endpoint(), local = accepted.local_endpoint();
 			try {
+				if (!setsockopt(accepted, SOL_SOCKET, SO_MARK, 3))
+					throw std::system_error(errno, std::generic_category(), "cannot set fwmark=3");
 				auto proxied = std::make_shared<proxied_tcp>(std::move(accepted));
 				proxied->remember();
 				proxied->spawn_connect_read({});

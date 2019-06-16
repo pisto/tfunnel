@@ -70,6 +70,8 @@ void send_udp_port_unreachable_v6(io_context::strand& strand,
                                   const boost::asio::ip::udp::endpoint& local,
                                   const boost::asio::ip::udp::endpoint& remote) {
 	auto raw = std::make_shared<boost::asio::ip::icmp::socket>(asio, boost::asio::ip::icmp::v6());
+	if (!setsockopt(*raw, SOL_SOCKET, SO_MARK, 3))
+		throw std::system_error(errno, std::generic_category(), "cannot set fwmark=3 on ICMP socket");
 	if (!setsockopt(*raw, SOL_IPV6, IPV6_TRANSPARENT))
 		throw std::logic_error("cannot set option IPV6_TRANSPARENT on raw socket");
 	if (!setsockopt(*raw, SOL_RAW, IPV6_CHECKSUM, offsetof(icmp6_hdr, icmp6_cksum)))
