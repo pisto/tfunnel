@@ -13,10 +13,9 @@ void tcp_listen_loop(yield_context yield) {
 	ip::tcp::acceptor tcp_listen(asio, ip::tcp::v6());
 	tcp_listen.set_option(socket_base::reuse_address(true));
 	if (!setsockopt(tcp_listen, SOL_SOCKET, SO_REUSEPORT))
-		collect_ostream(std::cerr) << "TCP : cannot set SO_REUSEPORT  on TCP listen socket ("
-		                           << error_code(errno, system_category()).message() << ')' << std::endl;
+		throw std::system_error(errno, std::generic_category(), "cannot set SO_REUSEPORT on TCP listen socket");
 	if (!setsockopt(tcp_listen, SOL_IPV6, IPV6_TRANSPARENT))
-		throw std::system_error(errno, std::generic_category(), "cannot set option IPV6_TRANSPARENT on TCP socket");
+		throw std::system_error(errno, std::generic_category(), "cannot set IPV6_TRANSPARENT on TCP listen socket");
 	tcp_listen.bind(ip::tcp::endpoint(ip::tcp::v6(), port));
 	tcp_listen.listen();
 	/*

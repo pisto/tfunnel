@@ -110,15 +110,12 @@ struct proxied_udp_client: proxied_udp {
 void udp_front_loop(yield_context yield) {
 	ip::udp::socket udp_front(asio, ip::udp::v6());
 	udp_front.set_option(socket_base::reuse_address(true));
-	if (!setsockopt(udp_front, SOL_SOCKET, SO_REUSEPORT))
-		collect_ostream(std::cerr) << "UDP : cannot set SO_REUSEPORT  on UDP front socket ("
-		                           << error_code(errno, system_category()).message() << ')' << std::endl;
 	if (!setsockopt(udp_front, SOL_IPV6, IPV6_TRANSPARENT))
-		throw std::system_error(errno, std::generic_category(), "cannot set option IPV6_TRANSPARENT on UDP socket");
+		throw std::system_error(errno, std::generic_category(), "cannot set IPV6_TRANSPARENT on UDP front socket");
 	if (!setsockopt(udp_front, SOL_IPV6, IPV6_RECVORIGDSTADDR))
-		throw std::system_error(errno, std::generic_category(), "cannot set option IPV6_RECVORIGDSTADDR on UDP socket");
+		throw std::system_error(errno, std::generic_category(), "cannot set IPV6_RECVORIGDSTADDR on UDP front socket");
 	if (!setsockopt(udp_front, SOL_IP, IP_RECVORIGDSTADDR))
-		throw std::system_error(errno, std::generic_category(), "cannot set option IP_RECVORIGDSTADDR on UDP socket");
+		throw std::system_error(errno, std::generic_category(), "cannot set IP_RECVORIGDSTADDR on UDP front socket");
 	udp_front.bind(ip::udp::endpoint(ip::udp::v6(), port));
 	/*
 	 * UDP accept loop. Wait for read readiness, then use recvmsg() to get the ancillary IPV6_ORIGDSTADDR
@@ -172,7 +169,7 @@ void udp_front_loop(yield_context yield) {
 				ip::udp::socket udpsock(asio, ip::udp::v6());
 				udpsock.set_option(socket_base::reuse_address(true));
 				if (!setsockopt(udpsock, SOL_IPV6, IPV6_TRANSPARENT))
-					throw std::logic_error("cannot set option IPV6_TRANSPARENT on UDP socket");
+					throw std::system_error(errno, std::generic_category(), "cannot set option IPV6_TRANSPARENT");
 				udpsock.bind(local);
 				udpsock.connect(remote);
 				proxied = std::make_shared<proxied_udp_client>(std::move(udpsock));
