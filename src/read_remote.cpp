@@ -60,9 +60,6 @@ template<bool client> void read_remote(yield_context yield) try {
 	while (1) {
 		async_read(input, buffer((void*)&h, sizeof(header)), yield);
 		switch (h.opcode) {
-			case DIE:
-				if (client || h.id || h.len) invalid_data(client);
-				_Exit(0);
 			case TCP_EOF: {
 				if (h.len) invalid_data(client);
 				auto socket = proxied_tcp::find(h.id);
@@ -83,11 +80,7 @@ template<bool client> void read_remote(yield_context yield) try {
 		}
 	}
 } catch (const system_error& e) {
-	if (e.code() == boost::asio::error::operation_aborted) return;
-	if (e.code() == boost::asio::error::eof) {
-		if (client) throw system_error(e.code(), "the proxy closed the connection");
-		_Exit(0);
-	}
+	if (e.code() == boost::asio::error::eof) _Exit(0);
 	throw;
 }
 

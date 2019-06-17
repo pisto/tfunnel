@@ -33,7 +33,6 @@ bool verbose = false;
 int main(int argc, char** argv) try {
 	using namespace tfunnel;
 	signal(SIGHUP, SIG_IGN);
-	signal(SIGPIPE, SIG_IGN);
 #ifndef PROXY_ONLY
 	{
 		//default to netfilter NAT values if available
@@ -66,11 +65,6 @@ int main(int argc, char** argv) try {
 		io_context::strand tcp_listen_strand(asio), udp_front_strand(asio);
 		spawn(tcp_listen_strand, tcp_listen_loop);
 		spawn(udp_front_strand, udp_front_loop);
-		signal_set signals(asio, SIGINT, SIGTERM);
-		signals.async_wait([](const boost::system::error_code&, int) {
-			send_packet(std::make_shared<header>(DIE, 0, 0));
-			post(output_strand, [] { _Exit(0); });
-		});
 		asio.run();
 	} else {
 #else

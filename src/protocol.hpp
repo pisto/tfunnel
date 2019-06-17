@@ -19,8 +19,6 @@ enum opcodes {
 	UDP_DATA,
 	UDP_CLOSE,
 
-	DIE,
-
 	OPS_END,
 };
 
