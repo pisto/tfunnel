@@ -98,8 +98,8 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 	virtual void remote_eof(bool graceful) {
 		boost::asio::post(strand_w, [graceful, this_ = shptr()] {
 			hold_for_remote_eof.erase(this_);
-			if (graceful) this_->shutdown(boost::asio::socket_base::shutdown_send, ignore_ec());
-			else this_->close(ignore_ec());
+			if (graceful) this_->shutdown(boost::asio::socket_base::shutdown_send, ignore_ec);
+			else this_->close(ignore_ec);
 		});
 		if (!graceful) forget();
 	}
@@ -124,8 +124,8 @@ protected:
 	virtual void local_eof(bool graceful) {
 		if (graceful) {
 			hold_for_remote_eof.emplace(shptr());
-			this->shutdown(boost::asio::socket_base::shutdown_receive, ignore_ec());
-		} else this->close(ignore_ec());
+			this->shutdown(boost::asio::socket_base::shutdown_receive, ignore_ec);
+		} else this->close(ignore_ec);
 	}
 
 private:
@@ -163,7 +163,7 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 		if (!graceful && !(local_graceful_eof && remote_graceful_eof))
 			//cause a TCP RST
 			boost::asio::post(strand_w, [this_ = shptr()] {
-				this_->set_option(boost::asio::socket_base::linger(true, 0), ignore_ec());
+				this_->set_option(boost::asio::socket_base::linger(true, 0), ignore_ec);
 			});
 		else remote_graceful_eof = true;
 		proxied_socket::remote_eof(graceful);

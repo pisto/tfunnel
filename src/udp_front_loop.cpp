@@ -75,7 +75,7 @@ struct proxied_udp_client: proxied_udp {
 		timeout.expires_after(std::chrono::seconds(1));
 		timeout.async_wait(bind_executor(strand_w, [this_ = shptr()](const error_code& ec) {
 			if (ec) return;
-			this_->close(ignore_ec());
+			this_->close(ignore_ec);
 		}));
 		forget();
 	}

@@ -2,9 +2,8 @@
 
 #include <boost/asio.hpp>
 
-inline boost::system::error_code& ignore_ec() {
-	static boost::system::error_code ignored;
-	return ignored;
+namespace {
+boost::system::error_code ignore_ec;
 }
 
 inline boost::asio::ip::address try_cast_ipv4(boost::asio::ip::address addr) try {
