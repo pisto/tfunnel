@@ -60,6 +60,10 @@ static void consume_output() {
 }
 
 void send_output(opcodes opcode, uint64_t id, uint16_t len, const void* data) {
+	#if 0
+	static uint64_t sendid = 0;
+	collect_ostream(std::cerr) << (port ? "cs(" : "ps(") << sendid++ << ',' << int(opcode) << ',' << id << ',' << len << ')' << std::endl;
+	#endif
 	union {
 		header h;
 		char buff[0];
