@@ -142,8 +142,8 @@ void udp_front_loop(yield_context yield) {
 
 		udp_front.async_wait(ip::udp::socket::wait_read, yield);
 		int datalen = std::min(udp_front.available(), header::MAX_LEN);
-		std::shared_ptr<char[]> packet(new char[sizeof(header) + datalen]);
-		iovec_buff.iov_base = packet.get() + sizeof(header);
+		std::shared_ptr<char[]> packet(new char[datalen]);
+		iovec_buff.iov_base = packet.get();
 		iovec_buff.iov_len = datalen;
 		if ((datalen = TEMP_FAILURE_RETRY(recvmsg(udp_front.native_handle(), &msgh, 0))) == -1)
 			throw system_error(errno, system_category(), "cannot recvmsg() for UDP");
@@ -189,8 +189,7 @@ void udp_front_loop(yield_context yield) {
 			                           << std::endl;
 			continue;
 		}
-		*reinterpret_cast<header*>(packet.get()) = header(UDP_DATA, proxied->id, datalen);
-		send_packet(packet);
+		send_output(UDP_DATA, proxied->id, datalen, packet.get());
 	} catch (const system_error& e) {
 		//XXX not sure about possible error codes here...
 		using namespace boost::asio::error;

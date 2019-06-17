@@ -10,7 +10,6 @@
 
 extern boost::asio::io_context asio;
 extern boost::asio::posix::stream_descriptor input, output;
-extern boost::asio::io_context::strand input_strand, output_strand;
 
 namespace tfunnel {
 
@@ -22,17 +21,8 @@ void udp_front_loop(boost::asio::yield_context yield);
 
 template<bool client> void read_remote(boost::asio::yield_context yield);
 
-template<typename T> void send_packet(std::shared_ptr<T> data) {
-	using namespace boost::asio;
-	using boost::system::error_code;
-	auto h = reinterpret_cast<header*>(data.get());
-	async_write(output, buffer(data.get(), h->len + sizeof(header)), bind_executor(output_strand,
-			[data](error_code ec, size_t) {
-				if (!ec) return;
-				collect_ostream(std::cerr) << "Fatal error: cannot send to remote: " << ec.message() << std::endl;
-				_Exit(1);
-			}));
-}
+void send_output(opcodes opcode, uint64_t id, uint16_t len, const void* data);
+inline void send_output(opcodes opcode, uint64_t id) { send_output(opcode, id, 0, 0); }
 
 void send_udp_port_unreachable(boost::asio::io_context::strand& strand,
                                boost::asio::ip::udp::endpoint local,
