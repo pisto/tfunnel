@@ -96,9 +96,9 @@ mkdir tfunnel/build
 cd tfunnel/build
 cmake -DCMAKE_BUIL_TYPE=Release ..
 
-#build executable that can be run both as the client and the proxy
 make -j
-#or, if you want a stripped down proxy executable
-make -j tfunnel-proxy-only
+sudo make install     #set correct capabilities with setcap
 ```
-The client is likely only compatible with Linux. The stripped down `tfunnel-proxy-only` proxy executable can probably be built and run for all the architectures [that are supported by Boost.Coroutine](https://www.boost.org/doc/libs/1_70_0/libs/context/doc/html/context/architectures.html).
+
+## Proxy-only build
+On platforms other than Linux, only the *proxy* part of tfunnel is built, and the executable name is `tfunnel-proxy-only`. tfunnel should compile on all platforms supported by [Boost.Coroutine](https://www.boost.org/doc/libs/1_70_0/libs/context/doc/html/context/architectures.html).
