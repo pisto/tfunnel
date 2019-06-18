@@ -79,6 +79,7 @@ int main(int argc, char** argv) try {
 	}
 	_Exit(0);
 } catch (const std::exception& e) {
-	collect_ostream(std::cerr) << "Fatal error: " << e.what() << std::endl;
+	collect_ostream(std::cerr) << "Fatal error in " << (tfunnel::port ? "client" : "proxy") << ": " << e.what()
+	                           << std::endl;
 	_Exit(1);
 }

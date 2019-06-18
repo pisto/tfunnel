@@ -23,7 +23,8 @@ void consume_output() {
 	auto size = outbuff_r.size() - outbuff_r_offset;
 	//in case stdout is slow, block on write to avoid OOM
 	if (size + outbuff_w.size() > 10 * 1024 * 1024) {
-		collect_ostream(std::cerr) << "Remote is slow, throttling" << std::endl;
+		collect_ostream(std::cerr) << "Slow upload link to " << (port ? "proxy" : "client") << ", throttling"
+		                           << std::endl;
 		boost::system::error_code ec;
 		write(output, buffer(outbuff_r.data() + outbuff_r_offset, size), ec);
 		on_output_write(ec, size);
