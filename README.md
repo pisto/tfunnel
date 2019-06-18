@@ -12,12 +12,12 @@ tfunnel is a replacement for [sshuttle --method=tproxy](https://github.com/sshut
 * fast (?)
 * connection reset handling for both TCP and UDP (ICMP port unreachable packets are sent)
 
-#Routing configuration
+# Routing configuration
 tfunnel does not try to setup the firewall like sshuttle does. You have to setup source based routing on your own, in order to have packets sent to tfunnel.
 
 All packets coming from the tfunnel *client* instance have a fwmark=3. This can be exploited to make the iptables ruleset easier.
 
-##Example: tfunnel over SSH
+## Example: tfunnel over SSH
 Here is the setup to tunnel all your local and forwarded IPv4 traffic through a tfunnel *client* instance, running on port 12300, that forwards all traffic to a *proxy* instance running on host:port `$SSH_HOST:$SSH_PORT`, over ssh.
 
 First of all make sure that tfunnel is available in `$PATH` in the remote host. The *client* instance requires either root privileges, or the following capabilities:
@@ -77,7 +77,7 @@ iptables-restore <<EOF
 EOF
 ```
 
-#Command line options
+# Command line options
 ```
 tfunnel options:
   -v [ --verbose ]                enable verbose output
