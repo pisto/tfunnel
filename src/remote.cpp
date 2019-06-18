@@ -149,11 +149,15 @@ template<bool client> void read_remote(yield_context yield) try {
 		collect_ostream(std::cerr) << (port ? "cr(" : "pr(") << recvid++ << ',' << int(h.opcode) << ',' << h.id << ',' << h.len << ')' << std::endl;
 		#endif
 		switch (h.opcode) {
-			case TCP_EOF: {
+			case TCP_CHOKE:
+			case TCP_UNCHOKE:
+				if (auto socket = std::dynamic_pointer_cast<proxied_tcp>(proxied_tcp::find(h.id)))
+					socket->choke(h.opcode == TCP_CHOKE);
+				break;
+			case TCP_EOF:
 				if (h.len) invalid_data(client);
 				if (auto socket = proxied_tcp::find(h.id)) socket->remote_eof(true);
 				break;
-			}
 			case TCP_DATA: {
 				posix::stream_descriptor::bytes_readable fionread;
 				error_code ec;

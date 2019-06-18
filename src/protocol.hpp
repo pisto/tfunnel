@@ -12,6 +12,8 @@ enum opcodes {
 
 	TCP_NEW,
 	TCP_DATA,
+	TCP_CHOKE,
+	TCP_UNCHOKE,
 	TCP_EOF,
 	TCP_CLOSE,
 
@@ -23,7 +25,7 @@ enum opcodes {
 };
 
 struct header {
-	static constexpr const uint64_t HELLO_MAGIC = 0xDEADBEEF, PROTOCOL_VERSION = 0;
+	static constexpr const uint64_t HELLO_MAGIC = 0xDEADBEEF, PROTOCOL_VERSION = 1;
 	static constexpr const uint8_t OPCODE_BITS = 4, ID_BITS = 44, LEN_BITS = 16;
 	static constexpr const size_t MAX_LEN = (1 << LEN_BITS) - 1;
 

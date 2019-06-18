@@ -71,7 +71,7 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 		all.erase(uint64_t(id));
 	}
 
-	void spawn_connect_read(typename socket::endpoint_type remote) {
+	virtual void spawn_connect_read(typename socket::endpoint_type remote) {
 		boost::asio::spawn(strand_r, [this_ = this->shptr(), remote](boost::asio::yield_context yield) {
 			try {
 				if (!remote.address().is_unspecified()) {
@@ -82,13 +82,11 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 				while (1) {
 					this_->async_wait(boost::asio::socket_base::wait_read, yield);
 					size_t datalen = std::min(this_->available(), header::MAX_LEN);
-					do {
-						if (!this_->on_read(datalen)) return;
-						auto data = allocate_output(opcodes::data, this_->id, datalen);
-						if (this_->receive(boost::asio::buffer(data, datalen)) != datalen)
-							throw std::logic_error("socket receive returned less data than promised");
-						commit_output();
-					} while ((datalen = std::min(this_->available(), header::MAX_LEN)));
+					if (!this_->on_read(datalen)) return;
+					auto data = allocate_output(opcodes::data, this_->id, datalen);
+					if (this_->receive(boost::asio::buffer(data, datalen)) != datalen)
+						throw std::logic_error("socket receive returned less data than promised");
+					commit_output();
 				}
 			} catch (const boost::system::system_error& e) {
 				if (e.code() != boost::asio::error::operation_aborted)
@@ -141,7 +139,8 @@ private:
 
 /*
  * Proxied TCP connection. Adds on top of proxied_socket the following features:
- * - the write() method, to transfer a full buffer with boost::asio::async_write()
+ * - the write() methods for a guaranteed sequential write
+ * - choking of the remote connection
  * - communicating the local EOF condition to the remote end
  */
 define_socket_opcodes(boost::asio::ip::tcp::socket, TCP_NEW, TCP_DATA, TCP_CLOSE);
@@ -153,6 +152,16 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 
 	proxied_tcp(boost::asio::ip::tcp::socket&& s): proxied_socket(std::move(s)) {
 		hold_strand_w.async_wait(boost::asio::bind_executor(strand_w, +[](boost::system::error_code){}));
+	}
+
+	virtual void choke(bool on) {
+		choked_read = on;
+		if (!choked_read) {
+			auto it = hold_during_choke.find(shptr());
+			if (it == hold_during_choke.end()) return;
+			spawn_connect_read({});
+			hold_during_choke.erase(it);
+		}
 	}
 
 	virtual void write(std::shared_ptr<char[]> data, size_t len) override {
@@ -167,6 +176,10 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 	}
 
 	virtual void commit_write() {
+		if (writebuff_r.size() + writebuff_w.size() > 5 * 1024 * 1024 && !remote_choked_read) {
+			send_output(TCP_CHOKE, id);
+			remote_choked_read = true;
+		}
 		if (!connected || writebuff_r.size()) return;
 		hold_strand_w.async_wait(boost::asio::bind_executor(strand_w, +[](boost::system::error_code){}));
 		std::swap(writebuff_r, writebuff_w);
@@ -174,6 +187,7 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 	}
 
 	virtual void remote_eof(bool graceful) override {
+		if (!graceful) hold_during_choke.erase(shptr());
 		if (!graceful && !(local_graceful_eof && remote_graceful_eof))
 			//cause a TCP RST
 			boost::asio::post(strand_w, [this_ = shptr()] {
@@ -195,7 +209,12 @@ protected:
 	}
 
 	virtual bool on_read(size_t len) override {
-		return len ?: (local_eof(true), false);
+		if (!len || choked_read) {
+			if (!len) local_eof(true);
+			else hold_during_choke.emplace(shptr());
+			return false;
+		}
+		return true;
 	}
 
 	virtual void local_eof(bool graceful) override {
@@ -213,6 +232,8 @@ private:
 	boost::asio::steady_timer hold_strand_w{ asio, std::chrono::hours(1000000) };
 	std::vector<char> writebuff_r, writebuff_w;
 	size_t writebuff_r_offset = 0;
+	bool choked_read = false, remote_choked_read = false;
+	static inline std::set<std::shared_ptr<proxied_socket>> hold_during_choke;
 
 	void on_send(boost::system::error_code ec, size_t len) {
 		if (ec) {
@@ -232,6 +253,10 @@ private:
 		writebuff_r.clear();
 		writebuff_r_offset = 0;
 		std::swap(writebuff_r, writebuff_w);
+		if (writebuff_r.size() < 1024 * 1024 && remote_choked_read) {
+			send_output(TCP_UNCHOKE, id);
+			remote_choked_read = false;
+		}
 		if (writebuff_r.size()) consume();
 		else hold_strand_w.cancel();
 	}
