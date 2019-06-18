@@ -47,3 +47,55 @@ struct collect_ostream: std::ostringstream {
 	}
 
 };
+
+
+/*
+ * Emulate semaphores with boost::asio::deadline_timer
+ */
+
+#include <chrono>
+
+struct asio_semaphore: private boost::asio::deadline_timer {
+
+	asio_semaphore(boost::asio::io_context& ctx, bool blocked_): boost::asio::deadline_timer(ctx) {
+		blocked(blocked_);
+	}
+
+	asio_semaphore(boost::asio::io_context& ctx, boost::asio::io_context::strand& strand): asio_semaphore(ctx, true) {
+		blocks_strand(strand);
+	}
+
+	bool blocked() const { return blocked_; }
+
+	void blocked(bool blocked_) {
+		if (this->blocked_ == blocked_) return;
+		expires_from_now(blocked_ ? boost::posix_time::time_duration(boost::date_time::pos_infin)
+		                          : boost::posix_time::time_duration());
+		this->blocked_ = blocked_;
+	}
+
+	template<typename duration>
+	void block_for(duration d) {
+		if (d <= boost::posix_time::time_duration()) {
+			blocked(false);
+			return;
+		}
+		expires_from_now(d);
+		async_wait([this](boost::system::error_code ec){
+			if (ec) return;
+			blocked_ = false;
+		});
+		blocked_ = true;
+	}
+
+	template<typename handler> auto async_wait(handler&& h) {
+		static_cast<boost::asio::deadline_timer&>(*this).async_wait(std::forward<handler>(h));
+	}
+
+	void blocks_strand(boost::asio::io_context::strand& strand) {
+		async_wait(boost::asio::bind_executor(strand, +[](boost::system::error_code){}));
+	}
+
+private:
+	bool blocked_ = false;
+};
