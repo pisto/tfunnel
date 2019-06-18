@@ -101,8 +101,8 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 				}
 			}
 			this_->local_eof(true);
-			boost::system::error_code ec;
 			while (this_->got_remote_eof.blocked()) {
+				boost::system::error_code ec;
 				this_->got_remote_eof.async_wait(yield[ec]);
 			}
 		});

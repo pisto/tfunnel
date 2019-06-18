@@ -53,8 +53,6 @@ struct collect_ostream: std::ostringstream {
  * Emulate semaphores with boost::asio::deadline_timer
  */
 
-#include <chrono>
-
 struct asio_semaphore: private boost::asio::deadline_timer {
 
 	asio_semaphore(boost::asio::io_context& ctx, bool blocked_): boost::asio::deadline_timer(ctx) {
@@ -65,27 +63,18 @@ struct asio_semaphore: private boost::asio::deadline_timer {
 		blocks_strand(strand);
 	}
 
-	bool blocked() const { return blocked_; }
+	bool blocked() const {
+		return expires_from_now() > zero;
+	}
 
 	void blocked(bool blocked_) {
-		if (this->blocked_ == blocked_) return;
-		expires_from_now(blocked_ ? boost::posix_time::time_duration(boost::date_time::pos_infin)
-		                          : boost::posix_time::time_duration());
-		this->blocked_ = blocked_;
+		if (blocked() == blocked_) return;
+		expires_from_now(blocked_ ? boost::posix_time::time_duration(boost::date_time::pos_infin) : zero);
 	}
 
 	template<typename duration>
 	void block_for(duration d) {
-		if (d <= boost::posix_time::time_duration()) {
-			blocked(false);
-			return;
-		}
 		expires_from_now(d);
-		async_wait([this](boost::system::error_code ec){
-			if (ec) return;
-			blocked_ = false;
-		});
-		blocked_ = true;
 	}
 
 	template<typename handler> auto async_wait(handler&& h) {
@@ -97,5 +86,5 @@ struct asio_semaphore: private boost::asio::deadline_timer {
 	}
 
 private:
-	bool blocked_ = false;
+	inline static const boost::posix_time::time_duration zero;
 };
