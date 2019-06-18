@@ -1,26 +1,92 @@
 # tfunnel
-Better documentation coming soon, I promise.
+tfunnel is a simple VPN implemented on top of [TPROXY](https://www.kernel.org/doc/Documentation/networking/tproxy.txt).
 
-tfunnel is a simple VPN implemented with TPROXY. It works by intercepting TCP connections and UDP packets locally and communicates with STDOUT and STDOUT with a remote demuxer, which recreates the connections on the remote machine. The demuxer can be connected with a ssh connection, a SSL connection, anything works.
+tfunnel works by intercepting TCP connection and UDP packets on the local, *client* instance, forwards them to a remote, *proxy* instance. The *proxy* instance recreates the TCP connections to the original remote destination, and sends the UDP packets as well. The connection between the *client* and the *proxy* can be any bidirectional channel, such an ssh connection.
 
-tfunnel It is a replacement for [sshuttle](https://github.com/sshuttle/sshuttle) with the tproxy method, which has never worked very well for me.
+tfunnel is a replacement for [sshuttle --method=tproxy](https://github.com/sshuttle/sshuttle), which has never worked very well for me.
 
 ## Features
-* does not require privileged access on the proxy box (requires CAP\_NET\_ADMIN on the local box)
+* does not require privileged access on the *proxy*
 * supports IPV6, TCP and UDP
 * simple
 * fast (?)
-* better TCP reset handling compared to sshuttle
-* forwarding of ICMP "port unreachable" messages for UDP "connections"
+* connection reset handling for both TCP and UDP (ICMP port unreachable packets are sent)
 
-# Running
-Better documentation coming soon, I told you.
+#Routing configuration
+tfunnel does not try to setup the firewall like sshuttle does. You have to setup source based routing on your own, in order to have packets sent to tfunnel.
 
-Run `ftunnel --help` for a synopsis of the arguments. The client is started by selecting a port to listen to with the `-p` argument. The proxy does not take any argument. For example this starts the client locally on port 12345 and runs the proxy on the ssh host "freedom" (the binary must be present in the remote box):
+All packets coming from the tfunnel *client* instance have a fwmark=3. This can be exploited to make the iptables ruleset easier.
+
+##Example: tfunnel over SSH
+Here is the setup to tunnel all your local and forwarded IPv4 traffic through a tfunnel *client* instance, running on port 12300, that forwards all traffic to a *proxy* instance running on host:port `$SSH_HOST:$SSH_PORT`, over ssh.
+
+First of all make sure that tfunnel is available in `$PATH` in the remote host. The *client* instance requires either root privileges, or the following capabilities:
 ```
-socat EXEC:'ftunnel -p 12345' EXEC:'ssh freedom ftunnel'
+cap_net_admin=ep cap_net_raw=ep cap_net_bind_service=ep
 ```
-Local iptables and IP routing setup is up to you. Better documentation coming soon, really.
+You start and link the *client* and *proxy* with either the bash coproc feature,
+```
+coproc tfunnel { stdbuf -i0 -o0 tfunnel -p 12300; }
+stdbuf -i0 -o0 ssh $SSH_HOST stdbuf -i0 -o0 tfunnel >&"${tfunnel[1]}" <&"${tfunnel[0]}"
+```
+or with the socat `EXEC:` target:
+```
+socat EXEC:'tfunnel -p 12300' EXEC:'ssh $SSH_HOST stdbuf -i0 -o0 tfunnel'
+```
+
+Now packets of interest must be intercepted by the *client* instance. We use here source based routing with packet marks. All packets of interest are marked with fwmark=1, and they are looped back to the *client* instance running locally:
+```
+ip rule add fwmark 1 lookup 100
+ip route add local default dev lo table 100
+```
+
+The following iptables setup contains the logic for marking the packets:
+* `tfunnel-mark-proxied`: mark packets that should be redirected to the tfunnel *client* instance with fwmark=1: all packets except DNS, UDP broadcast/multicast and packets directed towards the proxy endpoint `$SSH_HOST:$SSH_PORT`
+* `tfunnel-output`: intercept local outgoing traffic, ignore packets with fwmark=3 (outgoing from tfunnel), traverse `tfunnel-mark-proxied`
+* `tfunnel-prerouting`: intercept incoming traffic, ignore packets with fwmark=3 (outgoing from tfunnel), traverse `tfunnel-mark-proxied`, and if it marked as proxied, use TPROXY to effectively redirect to tfunnel
+```
+iptables-restore <<EOF
+    *mangle
+    :PREROUTING ACCEPT [0:0]
+    :INPUT ACCEPT [0:0]
+    :FORWARD ACCEPT [0:0]
+    :OUTPUT ACCEPT [0:0]
+    :POSTROUTING ACCEPT [0:0]
+    :tfunnel-mark-proxied - [0:0]
+    :tfunnel-output - [0:0]
+    :tfunnel-prerouting - [0:0]
+    -A PREROUTING -j tfunnel-prerouting
+    -A OUTPUT -j tfunnel-output
+    -A tfunnel-mark-proxied -d $SSH_HOST/32 -p tcp -m tcp --dport $SSH_PORT -j RETURN
+    -A tfunnel-mark-proxied -s $SSH_HOST/32 -p tcp -m tcp --sport $SSH_PORT -j RETURN
+    -A tfunnel-mark-proxied -p udp -m udp --dport 53 -j RETURN
+    -A tfunnel-mark-proxied -p udp -m udp --sport 53 -j RETURN
+    -A tfunnel-mark-proxied -m addrtype --dst-type LOCAL -j RETURN
+    -A tfunnel-mark-proxied -p udp -m addrtype --dst-type MULTICAST -j RETURN
+    -A tfunnel-mark-proxied -p udp -m addrtype --dst-type BROADCAST -j RETURN
+    -A tfunnel-mark-proxied -p tcp -m tcp -j MARK --set-xmark 0x1/0x1
+    -A tfunnel-mark-proxied -p udp -m udp -j MARK --set-xmark 0x1/0x1
+    -A tfunnel-output -m mark --mark 0x2/0x2 -j RETURN
+    -A tfunnel-output -j tfunnel-mark-proxied
+    -A tfunnel-prerouting -m mark --mark 0x2/0x2 -j RETURN
+    -A tfunnel-prerouting -j tfunnel-mark-proxied
+    -A tfunnel-prerouting -m mark ! --mark 0x1/0x1 -j RETURN
+    -A tfunnel-prerouting -p tcp -m tcp -j TPROXY --on-port 12300 --on-ip 0.0.0.0 --tproxy-mark 0x0/0x0
+    -A tfunnel-prerouting -p udp -m udp -j TPROXY --on-port 12300 --on-ip 0.0.0.0 --tproxy-mark 0x0/0x0
+    COMMIT
+EOF
+```
+
+#Command line options
+```
+tfunnel options:
+  -v [ --verbose ]                enable verbose output
+  -p arg (=0)                     start in client mode and listen on this port
+  --udp_timeout arg (=30)         timeout for unanswered UDP connections
+  --udp_timeout_stream arg (=120) timeout for answered UDP connections
+  --help                          print help
+```
+The udp options control the timeouts for the UDP sockets that are created to forward the traffic. They default to the values of netfilter (`/proc/sys/net/netfilter/nf_conntrack_udp_timeout` and `/proc/sys/net/netfilter/nf_conntrack_udp_timeout_stream`).
 
 # Building
 Requirements are Boost.Asio, Boost.Program\_options, Boost.Coroutine . Build system is CMake:
