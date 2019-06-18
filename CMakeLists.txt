@@ -13,6 +13,8 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
     target_compile_options(tfunnel PRIVATE -Wall)
     target_link_options(tfunnel PUBLIC -static)
     target_link_libraries(tfunnel Boost::program_options Boost::system Boost::coroutine)
+    install(TARGETS tfunnel DESTINATION bin)
+    install(SCRIPT CMakeInstallSetcap.txt)
 
 else()
 
