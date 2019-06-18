@@ -6,11 +6,11 @@ tfunnel works by intercepting TCP connection and UDP packets on the local, *clie
 tfunnel is a replacement for [sshuttle --method=tproxy](https://github.com/sshuttle/sshuttle), which has never worked very well for me.
 
 ## Features
-* does not require privileged access on the *proxy*
+* does not require privileged access on the proxy host
 * supports IPV6, TCP and UDP
-* simple
-* fast (?)
+* fast
 * connection reset handling for both TCP and UDP (ICMP port unreachable packets are sent)
+* load balancing (just launch multiple instances!)
 
 # Routing configuration
 tfunnel does not try to setup the firewall like sshuttle does. You have to setup source based routing on your own, in order to have packets sent to tfunnel.
