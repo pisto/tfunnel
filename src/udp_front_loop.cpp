@@ -38,6 +38,11 @@ struct proxied_udp_client: proxied_udp {
 	proxied_udp_client(ip::udp::socket&& s): proxied_udp(std::move(s)),
 	                                         endpoints(local_endpoint(), remote_endpoint()) {}
 
+	virtual void spawn_lifecycle(ip::udp::endpoint remote) {
+		wait_timeout();
+		proxied_udp::spawn_lifecycle(remote);
+	}
+
 	void remember() override {
 		proxied_udp::remember();
 		tuples_all.emplace(endpoints, std::weak_ptr(shptr<proxied_udp_client>()));
@@ -48,9 +53,9 @@ struct proxied_udp_client: proxied_udp {
 		proxied_udp::forget();
 	}
 
-	bool on_read(size_t len) override {
+	bool on_read(size_t len, boost::asio::yield_context& yield) override {
 		last_activity = clock::now();
-		return proxied_udp::on_read(len);
+		return proxied_udp::on_read(len, yield);
 	}
 	void on_write(size_t len) override {
 		is_stream = true;
@@ -59,25 +64,18 @@ struct proxied_udp_client: proxied_udp {
 	}
 
 	void remote_eof(bool graceful) override {
-		try {
+		if (!graceful) try {
 			send_udp_port_unreachable(strand_w, std::get<0>(endpoints), std::get<1>(endpoints));
-			if (verbose) collect_ostream(std::cerr) << "UDP " << try_cast_ipv4(std::get<1>(endpoints)) << " => "
-			                                        << try_cast_ipv4(std::get<0>(endpoints))
-			                                        << " : forwarded ICMP unreachable" << std::endl;
 		} catch (const system_error& e) {
-			//fallback if I do not have CAP_NET_RAW
-			collect_ostream(std::cerr) << "ICMP : cannot send UDP port unreachable message (" << e.what() << ')'
+			collect_ostream(std::cerr) << "ICMP " << try_cast_ipv4(std::get<1>(endpoints)) << " <= "
+			                           << try_cast_ipv4(std::get<0>(endpoints))
+			                           << " : cannot send UDP port unreachable message (" << e.what() << ')'
 			                           << std::endl;
-			proxied_udp::remote_eof(graceful);
-			return;
 		}
+		proxied_udp::remote_eof(graceful);
 		//make the socket linger for 1 sec to avoid reopening another UDP socket immediately if we keep receiving data
 		timeout.expires_after(std::chrono::seconds(1));
-		timeout.async_wait(bind_executor(strand_w, [this_ = shptr()](const error_code& ec) {
-			if (ec) return;
-			this_->close(ignore_ec);
-		}));
-		forget();
+		timeout.async_wait(bind_executor(strand_w, [this_ = shptr()](error_code){}));
 	}
 
 	void wait_timeout() {
@@ -178,8 +176,7 @@ void udp_front_loop(yield_context yield) {
 				udpsock.connect(remote);
 				proxied = std::make_shared<proxied_udp_client>(std::move(udpsock));
 				proxied->remember();
-				proxied->spawn_connect_read({});
-				proxied->wait_timeout();
+				proxied->spawn_lifecycle({});
 				if (verbose) collect_ostream(std::cerr) << "UDP " << try_cast_ipv4(remote) << " => "
 				                                        << try_cast_ipv4(local) << " : opened" << std::endl;
 			}

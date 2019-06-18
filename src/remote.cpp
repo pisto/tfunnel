@@ -93,6 +93,10 @@ void commit_output() {
 	consume_output();
 }
 
+void abort_output(uint16_t len) {
+	outbuff_w.resize(outbuff_w.size() - sizeof(header) - len);
+}
+
 
 //reading from remote
 namespace {
@@ -116,7 +120,7 @@ void handle_new_data_close(bool client, const header& h, yield_context yield) {
 			try {
 				s = std::make_shared<proxied_socket_type>(uint64_t(h.id));
 				s->remember();
-				s->spawn_connect_read(remote);
+				s->spawn_lifecycle(remote);
 			} catch (const system_error& e) {
 				collect_ostream(std::cerr) << "TCP => " << try_cast_ipv4(remote)
 				                           << " : cannot open connection on proxy (" << e.what() << ')' << std::endl;

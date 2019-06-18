@@ -34,7 +34,7 @@ void tcp_listen_loop(yield_context yield) {
 					throw system_error(errno, generic_category(), "cannot set fwmark=3");
 				auto proxied = std::make_shared<proxied_tcp>(std::move(accepted));
 				proxied->remember();
-				proxied->spawn_connect_read({});
+				proxied->spawn_lifecycle({});
 				if (verbose) collect_ostream(std::cerr) << "TCP " << try_cast_ipv4(remote) << " => "
 				                                        << try_cast_ipv4(local) << " : opened" << std::endl;
 			} catch (const system_error& e) {
