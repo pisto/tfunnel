@@ -71,7 +71,7 @@ void send_output(opcodes opcode, uint64_t id, uint16_t len, const void* data) {
 }
 
 char* allocate_output(opcodes opcode, uint64_t id, uint16_t len) {
-	#if DEBUG_MESSAGES
+	#ifdef DEBUG_MESSAGES
 	collect_ostream(std::cerr) << (port ? "cs(" : "ps(") << sendid++ << ',' << int(opcode) << ',' << id << ',' << len << ')' << std::endl;
 	#endif
 	union {
@@ -149,7 +149,7 @@ template<bool client> void read_remote(yield_context yield) try {
 	if (h != header::handshake(!client)) throw std::runtime_error("remote does not speak the same protocol");
 	while (1) {
 		async_read(input, buffer((void*)&h, sizeof(header)), yield);
-		#if 0
+		#ifdef DEBUG_MESSAGES
 		static uint64_t recvid = 1;
 		collect_ostream(std::cerr) << (port ? "cr(" : "pr(") << recvid++ << ',' << int(h.opcode) << ',' << h.id << ',' << h.len << ')' << std::endl;
 		#endif
