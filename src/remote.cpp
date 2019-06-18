@@ -1,4 +1,5 @@
 #include <memory>
+#include <vector>
 #include <iostream>
 #include "env.hpp"
 #include "protocol.hpp"
@@ -9,6 +10,90 @@ using namespace boost::system;
 
 namespace tfunnel {
 
+//writing to remote
+namespace {
+
+
+std::vector<char> outbuff_r, outbuff_w;
+size_t outbuff_r_offset = 0;
+
+void on_output_write(boost::system::error_code ec, size_t len);
+
+void consume_output() {
+	auto size = outbuff_r.size() - outbuff_r_offset;
+	//in case stdout is slow, block on write to avoid OOM
+	if (size + outbuff_w.size() > 10 * 1024 * 1024) {
+		collect_ostream(std::cerr) << "Remote is slow, throttling" << std::endl;
+		boost::system::error_code ec;
+		write(output, buffer(outbuff_r.data() + outbuff_r_offset, size), ec);
+		on_output_write(ec, size);
+	} else output.async_write_some(buffer(outbuff_r.data() + outbuff_r_offset, size), on_output_write);
+}
+
+void on_output_write(boost::system::error_code ec, size_t len) {
+	if (ec) {
+		collect_ostream(std::cerr) << "Fatal error: cannot send to remote: " << ec.message() << std::endl;
+		_Exit(1);
+	}
+	outbuff_r_offset += len;
+	if (outbuff_r.size() - outbuff_r_offset > 0) {
+		consume_output();
+		return;
+	}
+	outbuff_r.clear();
+	outbuff_r_offset = 0;
+	std::swap(outbuff_r, outbuff_w);
+	if (outbuff_r.size()) consume_output();
+}
+
+#ifdef DEBUG_MESSAGES
+uint64_t sendid = 0;
+#endif
+
+}
+
+
+void send_output(opcodes opcode, uint64_t id, uint16_t len, const void* data) {
+	#ifdef DEBUG_MESSAGES
+	collect_ostream(std::cerr) << (port ? "cs(" : "ps(") << sendid++ << ',' << int(opcode) << ',' << id << ',' << len << ')' << std::endl;
+	#endif
+	union {
+		header h;
+		char buff[0];
+	} h;
+	h.h.opcode = opcode;
+	h.h.id = id;
+	h.h.len = len;
+	outbuff_w.insert(outbuff_w.end(), h.buff, h.buff + sizeof(h));
+	if (len) outbuff_w.insert(outbuff_w.end(), (const char*)data, len + (const char*)data);
+	commit_output();
+}
+
+char* allocate_output(opcodes opcode, uint64_t id, uint16_t len) {
+	#if DEBUG_MESSAGES
+	collect_ostream(std::cerr) << (port ? "cs(" : "ps(") << sendid++ << ',' << int(opcode) << ',' << id << ',' << len << ')' << std::endl;
+	#endif
+	union {
+		header h;
+		char buff[0];
+	} h;
+	h.h.opcode = opcode;
+	h.h.id = id;
+	h.h.len = len;
+	outbuff_w.insert(outbuff_w.end(), h.buff, h.buff + sizeof(h));
+	auto oldsize = outbuff_w.size();
+	outbuff_w.resize(oldsize + len);
+	return &outbuff_w[oldsize];
+}
+
+void commit_output() {
+	if (outbuff_r.size()) return;
+	std::swap(outbuff_r, outbuff_w);
+	consume_output();
+}
+
+
+//reading from remote
 namespace {
 
 void invalid_data(bool client) {

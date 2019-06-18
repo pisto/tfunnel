@@ -2,7 +2,6 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
-#include <vector>
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
 #include "env.hpp"
@@ -29,78 +28,6 @@ posix::stream_descriptor input(asio, STDIN_FILENO), output(asio, STDOUT_FILENO);
 namespace tfunnel {
 uint16_t port, udp_timeout, udp_timeout_stream;
 bool verbose = false;
-
-static std::vector<char> outbuff_r, outbuff_w;
-static size_t outbuff_r_offset = 0;
-static void consume_output();
-static void on_output_write(boost::system::error_code ec, size_t len) {
-	if (ec) {
-		collect_ostream(std::cerr) << "Fatal error: cannot send to remote: " << ec.message() << std::endl;
-		_Exit(1);
-	}
-	outbuff_r_offset += len;
-	if (outbuff_r.size() - outbuff_r_offset > 0) {
-		consume_output();
-		return;
-	}
-	outbuff_r.clear();
-	outbuff_r_offset = 0;
-	std::swap(outbuff_r, outbuff_w);
-	if (outbuff_r.size()) consume_output();
-}
-static void consume_output() {
-	auto size = outbuff_r.size() - outbuff_r_offset;
-	//in case stdout is slow, block on write to avoid OOM
-	if (size + outbuff_w.size() > 10 * 1024 * 1024) {
-		collect_ostream(std::cerr) << "Remote is slow, throttling" << std::endl;
-		boost::system::error_code ec;
-		write(output, buffer(outbuff_r.data() + outbuff_r_offset, size), ec);
-		on_output_write(ec, size);
-	} else output.async_write_some(buffer(outbuff_r.data() + outbuff_r_offset, size), on_output_write);
-}
-
-#if 0
-static uint64_t sendid = 0;
-#endif
-void send_output(opcodes opcode, uint64_t id, uint16_t len, const void* data) {
-	#if 0
-	collect_ostream(std::cerr) << (port ? "cs(" : "ps(") << sendid++ << ',' << int(opcode) << ',' << id << ',' << len << ')' << std::endl;
-	#endif
-	union {
-		header h;
-		char buff[0];
-	} h;
-	h.h.opcode = opcode;
-	h.h.id = id;
-	h.h.len = len;
-	outbuff_w.insert(outbuff_w.end(), h.buff, h.buff + sizeof(h));
-	if (len) outbuff_w.insert(outbuff_w.end(), (const char*)data, len + (const char*)data);
-	commit_output();
-}
-
-char* allocate_output(opcodes opcode, uint64_t id, uint16_t len) {
-	#if 0
-	collect_ostream(std::cerr) << (port ? "cs(" : "ps(") << sendid++ << ',' << int(opcode) << ',' << id << ',' << len << ')' << std::endl;
-	#endif
-	union {
-		header h;
-		char buff[0];
-	} h;
-	h.h.opcode = opcode;
-	h.h.id = id;
-	h.h.len = len;
-	outbuff_w.insert(outbuff_w.end(), h.buff, h.buff + sizeof(h));
-	auto oldsize = outbuff_w.size();
-	outbuff_w.resize(oldsize + len);
-	return &outbuff_w[oldsize];
-}
-
-void commit_output() {
-	if (outbuff_r.size()) return;
-	std::swap(outbuff_r, outbuff_w);
-	consume_output();
-}
-
 }
 
 int main(int argc, char** argv) try {
