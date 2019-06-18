@@ -7,6 +7,7 @@
 #include <cmath>
 #include <chrono>
 #include <vector>
+#include <stdexcept>
 #include <boost/asio.hpp>
 #include <boost/asio/spawn.hpp>
 #include "env.hpp"
@@ -81,10 +82,13 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 				while (1) {
 					this_->async_wait(boost::asio::socket_base::wait_read, yield);
 					size_t datalen = std::min(this_->available(), header::MAX_LEN);
-					std::shared_ptr<char[]> packet(new char[datalen]);
-					datalen = this_->receive(boost::asio::buffer(packet.get(), datalen));
-					if (!this_->on_read(datalen)) break;
-					send_output(opcodes::data, this_->id, datalen, packet.get());
+					do {
+						if (!this_->on_read(datalen)) return;
+						auto data = allocate_output(opcodes::data, this_->id, datalen);
+						if (this_->receive(boost::asio::buffer(data, datalen)) != datalen)
+							throw std::logic_error("socket receive returned less data than promised");
+						commit_output();
+					} while ((datalen = std::min(this_->available(), header::MAX_LEN)));
 				}
 			} catch (const boost::system::system_error& e) {
 				if (e.code() != boost::asio::error::operation_aborted)
@@ -153,6 +157,16 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 
 	virtual void write(std::shared_ptr<char[]> data, size_t len) override {
 		writebuff_w.insert(writebuff_w.end(), data.get(), data.get() + len);
+		commit_write();
+	}
+
+	virtual char* allocate_write(size_t len) {
+		auto oldsize = writebuff_w.size();
+		writebuff_w.resize(oldsize + len);
+		return &writebuff_w[oldsize];
+	}
+
+	virtual void commit_write() {
 		if (!connected || writebuff_r.size()) return;
 		hold_strand_w.async_wait(boost::asio::bind_executor(strand_w, +[](boost::system::error_code){}));
 		std::swap(writebuff_r, writebuff_w);

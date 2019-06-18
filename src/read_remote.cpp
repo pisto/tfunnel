@@ -66,12 +66,22 @@ template<bool client> void read_remote(yield_context yield) try {
 		switch (h.opcode) {
 			case TCP_EOF: {
 				if (h.len) invalid_data(client);
-				auto socket = proxied_tcp::find(h.id);
-				if (socket) socket->remote_eof(true);
+				if (auto socket = proxied_tcp::find(h.id)) socket->remote_eof(true);
 				break;
 			}
+			case TCP_DATA: {
+				posix::stream_descriptor::bytes_readable fionread;
+				error_code ec;
+				input.io_control(fionread, ec);
+				if (!ec && fionread.get() >= h.len)
+					if (auto socket = std::dynamic_pointer_cast<proxied_tcp>(proxied_tcp::find(h.id))) {
+						auto data = socket->allocate_write(h.len);
+						read(input, buffer(data, h.len));
+						socket->commit_write();
+						break;
+					}
+			}
 			case TCP_NEW:
-			case TCP_DATA:
 			case TCP_CLOSE:
 				handle_new_data_close<proxied_tcp>(client, h, yield);
 				break;
