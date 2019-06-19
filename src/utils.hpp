@@ -59,10 +59,6 @@ struct asio_semaphore: private boost::asio::deadline_timer {
 		blocked(blocked_);
 	}
 
-	asio_semaphore(boost::asio::io_context& ctx, boost::asio::io_context::strand& strand): asio_semaphore(ctx, true) {
-		blocks_strand(strand);
-	}
-
 	bool blocked() const {
 		return expires_from_now() > zero;
 	}
@@ -79,10 +75,6 @@ struct asio_semaphore: private boost::asio::deadline_timer {
 
 	template<typename handler> auto async_wait(handler&& h) {
 		static_cast<boost::asio::deadline_timer&>(*this).async_wait(std::forward<handler>(h));
-	}
-
-	void blocks_strand(boost::asio::io_context::strand& strand) {
-		async_wait(boost::asio::bind_executor(strand, +[](boost::system::error_code){}));
 	}
 
 private:

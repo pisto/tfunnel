@@ -28,11 +28,13 @@ namespace tfunnel {
 template<typename socket> struct socket_opcodes {
 	//define these
 	static const opcodes new_socket, data, close_socket;
+	static const char* protoname;
 };
 //helper macro to specialize socket_opcodes
-#define define_socket_opcodes(socket, n, d, c)\
+#define define_socket_opcodes(socket, n, d, c, name)\
         template<> struct socket_opcodes<socket> {\
             static constexpr const opcodes new_socket = n, data = d, close_socket = c;\
+            static constexpr const char* protoname = name;\
         }
 
 template<typename socket> struct proxied_socket: std::enable_shared_from_this<proxied_socket<socket>>, socket {
@@ -48,22 +50,42 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 	}
 
 	//constructor for proxy end, set the id and create a new socket
-	proxied_socket(uint64_t id) try : socket(asio, protocol_type::v6()), id(id), strand_w(asio), strand_r(asio),
-	                                  connected(false) {}
+	proxied_socket(uint64_t id) try : socket(asio, protocol_type::v6()), id(id) {
+		if (verbose) collect_ostream(std::cerr) << description() << " : opened" << std::endl;
+	}
 	catch (const boost::system::system_error& e) {
 		send_output(opcodes::close_socket, id);
+		if (verbose) collect_ostream(std::cerr) << description() << " : aborted(" << e.what() << ')' << std::endl;
 	}
 
-	virtual std::string description() = 0;
-
 	//constructor for client end, use a socket new socket and generate an id
-	proxied_socket(socket&& s): socket(std::move(s)), id(index.v++), strand_w(asio), strand_r(asio) {
+	proxied_socket(socket&& s) try : socket(std::move(s)), id(index.v++) {
 		auto ep = this->local_endpoint();
 		new_connection_data ncdata{ ep.address().to_v6().to_bytes(), ep.port() };
-		send_output(opcodes::new_socket, id, sizeof(ncdata), &ncdata );
-		boost::system::error_code ec;
-		this->remote_endpoint(ec);
-		if ((connected = !ec)) on_connect();
+		send_output(opcodes::new_socket, id, sizeof(ncdata), &ncdata);
+		if (verbose) collect_ostream(std::cerr) << description() << " : opened" << std::endl;
+	}
+	catch (const boost::system::system_error& e) {
+		send_output(opcodes::close_socket, id);
+		if (verbose) collect_ostream(std::cerr) << description() << " : aborted" << std::endl;
+	}
+
+	virtual std::string description() {
+		std::ostringstream ret;
+		ret << opcodes::protoname << '(' << id << ") ";
+		try {
+			if (port) ret << try_cast_ipv4(this->remote_endpoint());
+			else {
+				auto port = this->local_endpoint().port();
+				if (port) ret << "[proxy]:" << this->local_endpoint().port();
+				else ret << "[proxy]:-";
+			}
+		}
+		catch(const boost::system::system_error&) { ret << '-'; }
+		ret << " => ";
+		try { ret << try_cast_ipv4(port ? this->local_endpoint() : this->remote_endpoint()); }
+		catch(const boost::system::system_error&) { ret << '-'; }
+		return ret.str();
 	}
 
 	virtual void remember() {
@@ -75,13 +97,19 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 	}
 
 	virtual void spawn_lifecycle(typename socket::endpoint_type remote) {
-		boost::asio::spawn(strand_r, [this_ = this->shptr(), remote](boost::asio::yield_context yield) {
+		boost::asio::spawn(lifecycle_strand, [this_ = this->shptr(), remote](boost::asio::yield_context yield) {
+			if (!remote.address().is_unspecified()) try {
+				this_->async_connect(remote, yield);
+				if (verbose) collect_ostream(std::cerr) << this_->description() << " : connected" << std::endl;
+			} catch (const boost::system::system_error& e) {
+					if (e.code() == boost::asio::error::operation_aborted) return;
+					if (verbose) collect_ostream(std::cerr) << this_->description() << " : connection failed("
+					                                        << e.what() << ')' <<std::endl;
+					return;
+			}
+			this_->on_connect();
+			bool graceful_eof = false;
 			try {
-				if (!remote.address().is_unspecified()) {
-					this_->async_connect(remote, yield);
-					this_->connected = true;
-					this_->on_connect();
-				}
 				while (1) {
 					this_->async_wait(boost::asio::socket_base::wait_read, yield);
 					size_t datalen = std::min(this_->available(), header::MAX_LEN);
@@ -90,25 +118,38 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 					try {
 						if (this_->receive(boost::asio::buffer(data, datalen)) != datalen)
 							throw std::logic_error("socket receive returned less data than promised");
+					} catch (const boost::system::system_error& e) {
+						abort_output(datalen);
+						if (!datalen && e.code() == boost::asio::error::eof) break;
+						throw;
 					} catch (...) {
 						abort_output(datalen);
 						throw;
 					}
 					commit_output();
+					if (verbose) {
+						if (port) collect_ostream(std::cerr) << this_->description() << " : dataread(" << datalen
+						                                     << "=>)" << std::endl;
+						else collect_ostream(std::cerr) << this_->description() << " : dataread(<=" << datalen << ')'
+						                                << std::endl;
+					}
 				}
+				graceful_eof = true;
 			} catch (const boost::system::system_error& e) {
 				if (e.code() == boost::asio::error::operation_aborted) return;
-				if (e.code() != boost::asio::error::eof) {
-					this_->local_eof(false);
-					return;
-				}
+				if (verbose) collect_ostream(std::cerr) << this_->description() << " : read error(" << e.what() << ')'
+				                                        << std::endl;
 			}
-			this_->local_eof(true);
-			while (this_->got_remote_eof.blocked()) {
-				boost::system::error_code ec;
-				this_->got_remote_eof.async_wait(yield[ec]);
-			}
+			this_->local_eof(graceful_eof, yield);
+			if (graceful_eof) this_->shutdown(boost::asio::socket_base::shutdown_receive, ignore_ec);
+			while (this_->got_remote_eof.blocked()) this_->got_remote_eof.async_wait(yield[ignore_ec]);
 		});
+	}
+
+	virtual bool connected() {
+		boost::system::error_code ec;
+		auto endpoint = this->remote_endpoint(ec);
+		return !ec && !endpoint.address().is_unspecified();
 	}
 
 	virtual void choke(bool on) {
@@ -119,32 +160,37 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 
 	virtual void remote_eof(bool graceful) {
 		if (!graceful) {
-			choke(false);
 			forget();
 			send_close_notice = false;
 		}
-		boost::asio::post(strand_w, [graceful, this_ = shptr()] {
-			this_->got_remote_eof.blocked(false);
-			if (graceful) this_->shutdown(boost::asio::socket_base::shutdown_send, ignore_ec);
-			else this_->cancel(ignore_ec);
-		});
+		got_remote_eof.blocked(false);
+	}
+
+	virtual void kill() {
+		forget();
+		choke(false);
+		this->cancel();
+		got_remote_eof.blocked(false);
 	}
 
 	virtual ~proxied_socket() {
 		all.erase(uint64_t(id));
 		if (send_close_notice) send_output(opcodes::close_socket, id);
+		if (verbose) collect_ostream(std::cerr) << description() << " : closed" << std::endl;
 	}
 
 protected:
-	boost::asio::io_context::strand strand_w, strand_r;
-	bool connected;
+
+	asio_semaphore got_remote_eof{ asio, true };
 
 	template<typename C = proxied_socket> auto shptr() {
 		return std::dynamic_pointer_cast<C>(this->shared_from_this());
 	}
 
 	virtual void on_connect() {}
+
 	virtual bool on_read(size_t len, boost::asio::yield_context& yield) {
+		if (dead) throw boost::system::system_error(boost::asio::error::operation_aborted);
 		auto [generation, outstanding] = get_output_statistics();
 		if (generation != last_output_generation) {
 			my_outstanding = len;
@@ -153,30 +199,35 @@ protected:
 		//choke if output is close to buffer_size, and our output is significant (> 10%)
 		if (outstanding > buffer_size / 2 && (10 * my_outstanding) / outstanding > 1) {
 			choke(true);
-			exec_on_new_output_generation([this_ = shptr()]{ this_->choke(false); });
+			exec_on_new_output_generation([this_ = std::weak_ptr(shptr())]{
+				auto locked = this_.lock();
+				if (locked) locked->choke(false);
+			});
 		}
 		bool blocked_once = false;
 		while (read_choked.blocked()) {
 			if (verbose && !blocked_once) collect_ostream(std::cerr) << description() << " : choked" << std::endl;
 			blocked_once = true;
-			boost::system::error_code ec;
-			read_choked.async_wait(yield[ec]);
+			read_choked.async_wait(yield[ignore_ec]);
 		}
 		if (verbose && blocked_once) collect_ostream(std::cerr) << description() << " : unchoked" << std::endl;
+		if (dead) throw boost::system::system_error(boost::asio::error::operation_aborted);
 		return true;
 	};
+
 	virtual void on_write(size_t len) {}
 
-	virtual void local_eof(bool graceful) {
-		choke(false);
-		if (graceful) this->shutdown(boost::asio::socket_base::shutdown_receive, ignore_ec);
+	virtual void local_eof(bool graceful, boost::asio::yield_context& yield) {
+		if (verbose && graceful)
+			collect_ostream(std::cerr) << description() << " : eof(" << (port ? "=>" : "<=") << ')' << std::endl;
 	}
 
 private:
-	bool send_close_notice = true;
+	boost::asio::io_context::strand lifecycle_strand{ asio };
+	bool dead = false, send_close_notice = true;
 	uint64_t last_output_generation = 0;
 	size_t my_outstanding = 0;
-	asio_semaphore got_remote_eof{ asio, true }, read_choked{ asio, false };
+	asio_semaphore read_choked{ asio, false };
 	static inline std::unordered_map<uint64_t, std::weak_ptr<proxied_socket>> all;
 	static inline struct { uint64_t v : tfunnel::header::ID_BITS; } index;
 };
@@ -188,25 +239,10 @@ private:
  * - choking of the remote connection
  * - communicating the local EOF condition to the remote end
  */
-define_socket_opcodes(boost::asio::ip::tcp::socket, TCP_NEW, TCP_DATA, TCP_CLOSE);
+define_socket_opcodes(boost::asio::ip::tcp::socket, TCP_NEW, TCP_DATA, TCP_CLOSE, "TCP");
 struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 
 	using proxied_socket::proxied_socket;
-
-	virtual std::string description() override {
-		std::ostringstream ret;
-		ret << "TCP(" << id << ") ";
-		try {
-			if (port) ret << try_cast_ipv4(remote_endpoint());
-			else ret << "[proxy]:" << local_endpoint().port();
-		}
-		catch(const boost::system::system_error&) { ret << '-'; }
-		ret << " => ";
-		try { ret << try_cast_ipv4(port ? local_endpoint() : remote_endpoint()); }
-		catch(const boost::system::system_error&) { ret << '-'; }
-		if (force_choked) ret << " (force_choked)";
-		return ret.str();
-	}
 
 	virtual void choke(bool on) override {
 		proxied_socket::choke(force_choked || on);
@@ -229,38 +265,31 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 	}
 
 	virtual void commit_write() {
-		if (dontwrite) {
-			writebuff_w.clear();
-			return;
-		}
 		if (!remote_choked_read && writebuff_r.size() - writebuff_r_offset + writebuff_w.size() > buffer_size) {
 			send_output(TCP_CHOKE, id);
 			remote_choked_read = true;
 		}
-		if (!connected || writebuff_r.size()) return;
-		writes_finished.blocked(true);
-		writes_finished.blocks_strand(strand_w);
+		if (!connected() || writer_active) return;
 		std::swap(writebuff_r, writebuff_w);
 		consume();
 	}
 
 	virtual void remote_eof(bool graceful) override {
-		if (!graceful) choked_from_remote(false);
 		proxied_socket::remote_eof(graceful);
-		if (!graceful && !(local_graceful_eof && remote_graceful_eof))
-			//cause a TCP RST
-			boost::asio::post(strand_w, [this_ = shptr()] {
-				this_->set_option(boost::asio::socket_base::linger(true, 0), ignore_ec);
-				this_->close(ignore_ec);
-			});
-		else remote_graceful_eof = true;
+		graceful_remote_eof |= graceful;
+		if (connected() && !writer_active) check_forward_eof();
+	}
+
+	virtual void kill() override {
+		choked_from_remote(false);
+		proxied_socket::kill();
 	}
 
 protected:
 
 	virtual void on_connect() override {
-		if (!writebuff_w.size()) {
-			writes_finished.blocked(false);
+		if (writebuff_w.empty()) {
+			check_forward_eof();
 			return;
 		}
 		std::swap(writebuff_r, writebuff_w);
@@ -269,38 +298,47 @@ protected:
 	}
 
 	virtual bool on_read(size_t len, boost::asio::yield_context& yield) override {
-		if (!len) return false;
-		return proxied_socket::on_read(len, yield);
+		return proxied_socket::on_read(len, yield) && len;
 	}
 
-	virtual void local_eof(bool graceful) override {
-		choked_from_remote(false);
-		if (graceful) {
-			local_graceful_eof = true;
-			send_output(TCP_EOF, id);
-		}
-		proxied_socket::local_eof(graceful);
+	virtual void local_eof(bool graceful, boost::asio::yield_context& yield) override {
+		if (graceful) send_output(TCP_EOF, id);
+		proxied_socket::local_eof(graceful, yield);
 	}
 
 private:
-	bool local_graceful_eof = false, remote_graceful_eof = false;
-	asio_semaphore writes_finished{ asio, strand_w };
+	bool writer_active = false, graceful_remote_eof = false, eof_forwarded = false;
 	std::vector<char> writebuff_r, writebuff_w;
 	size_t writebuff_r_offset = 0;
-	bool remote_choked_read = false, force_choked = false, dontwrite = false;
+	bool remote_choked_read = false, force_choked = false;
 
-	void on_send(boost::system::error_code ec, size_t len) {
+	void check_forward_eof() {
+		if (eof_forwarded || !connected() || got_remote_eof.blocked()) return;
+		eof_forwarded = true;
+		if (graceful_remote_eof) shutdown(boost::asio::socket_base::shutdown_send);
+		else {
+			kill();
+			set_option(boost::asio::socket_base::linger(true, 0));
+			close();
+		}
+	}
+
+	void on_write_completed(const boost::system::error_code& ec, size_t len) {
+		writer_active = false;
+		if (ec == boost::asio::error::operation_aborted) return;
 		if (ec) {
-			dontwrite = true;
+			if (verbose) collect_ostream(std::cerr) << description() << " : write error(" << ec.message() << ')'
+			                                        << std::endl;
 			if (!remote_choked_read) {
 				send_output(TCP_CHOKE, id);
 				remote_choked_read = true;
 			}
-			writebuff_r.clear();
-			writebuff_w.clear();
-			writebuff_r_offset = 0;
-			writes_finished.blocked(false);
+			kill();
 			return;
+		}
+		if (verbose) {
+			if (port) collect_ostream(std::cerr) << description() << " : datawrite(<=" << len << ')' << std::endl;
+			else collect_ostream(std::cerr) << description() << " : datawrite(" << len << "=>)" << std::endl;
 		}
 		on_write(len);
 		writebuff_r_offset += len;
@@ -316,13 +354,16 @@ private:
 		writebuff_r_offset = 0;
 		std::swap(writebuff_r, writebuff_w);
 		if (writebuff_r.size()) consume();
-		else writes_finished.blocked(false);
+		else check_forward_eof();
 	}
 
 	void consume() {
+		writer_active = true;
 		this->async_write_some(
 				boost::asio::buffer(writebuff_r.data() + writebuff_r_offset, writebuff_r.size() - writebuff_r_offset),
-				[this_ = shptr<proxied_tcp>()](boost::system::error_code ec, size_t len) { this_->on_send(ec, len); }
+				[this_ = shptr<proxied_tcp>()](const boost::system::error_code& ec, size_t len) {
+					this_->on_write_completed(ec, len);
+				}
 		);
 	}
 
@@ -333,72 +374,43 @@ private:
  * Proxied UDP connection. Adds on top of proxied_socket the following features:
  * - write() to send a packet, die on first error
  */
-define_socket_opcodes(boost::asio::ip::udp::socket, UDP_NEW, UDP_DATA, UDP_CLOSE);
+define_socket_opcodes(boost::asio::ip::udp::socket, UDP_NEW, UDP_DATA, UDP_CLOSE, "UDP");
 struct proxied_udp: proxied_socket<boost::asio::ip::udp::socket> {
 
 	using proxied_socket::proxied_socket;
 
-	virtual std::string description() override {
-		std::ostringstream ret;
-		ret << "UDP(" << id << ") ";
-		try {
-			if (port) ret << try_cast_ipv4(remote_endpoint());
-			else ret << "[proxy]:" << local_endpoint().port();
-		}
-		catch(const boost::system::system_error&) { ret << '-'; }
-		ret << " => ";
-		try { ret << try_cast_ipv4(port ? local_endpoint() : remote_endpoint()); }
-		catch(const boost::system::system_error&) { ret << '-'; }
-		return ret.str();
-	}
-
 	virtual void spawn_lifecycle(boost::asio::ip::udp::endpoint remote) override {
 		if (!remote.address().is_unspecified()) {
 			connect(remote);
-			connected = true;
 			on_connect();
 		}
 		proxied_socket::spawn_lifecycle({});
 	}
 
 	virtual void write(std::shared_ptr<char[]> data, size_t len) override {
-		async_send(boost::asio::buffer(data.get(), len), boost::asio::bind_executor(strand_w,
+		async_send(boost::asio::buffer(data.get(), len),
 				[data, this_ = shptr<proxied_udp>()](boost::system::error_code ec, size_t len) {
 					if (ec == boost::asio::error::operation_aborted) return;
-					if (ec) this_->local_eof(false);
-					else this_->on_write(len);
-				})
+					if (ec) {
+						this_->kill();
+						if (verbose) collect_ostream(std::cerr) << this_->description() << " : write error("
+						                                        << ec.message() << ')' << std::endl;
+					} else this_->on_write(len);
+				}
 		);
 	}
 
 protected:
 
-	virtual bool on_read(size_t len, boost::asio::yield_context& yield) override {
-		bool ret = proxied_socket::on_read(len, yield);
-		if (dead) throw boost::system::system_error(boost::asio::error::operation_aborted);
-		return ret;
-	};
-
-	virtual void local_eof(bool graceful) override {
-		if (!graceful) {
-			dead = true;
-			forget();
-			choke(false);
-			cancel(ignore_ec);
-		}
-		proxied_socket::local_eof(graceful);
+	virtual void local_eof(bool graceful, boost::asio::yield_context& yield) override {
+		if (!graceful) kill();
+		proxied_socket::local_eof(graceful, yield);
 	}
 
 	virtual void remote_eof(bool graceful) override {
-		if (!graceful) {
-			dead = true;
-			cancel(ignore_ec);
-		}
+		if (!graceful) kill();
 		proxied_socket::remote_eof(graceful);
 	}
-
-private:
-	bool dead = false;
 
 };
 

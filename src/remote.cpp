@@ -126,36 +126,33 @@ void invalid_data(bool client) {
 }
 
 template<typename proxied_socket_type>
-void handle_new_data_close(bool client, const header& h, yield_context yield) {
+void handle_new_data_close(bool client, const header& h, yield_context& yield) {
 	using ops = typename proxied_socket_type::opcodes;
 
-	auto s = proxied_socket_type::find(h.id);
 	switch (h.opcode) {
-		case ops::new_socket:
-		{
+		case ops::new_socket: {
 			new_connection_data ncdata;
-			if (client || h.len != sizeof(ncdata) || s) invalid_data(client);
+			if (client || h.len != sizeof(ncdata) || proxied_socket_type::find(h.id)) invalid_data(client);
 			async_read(input, buffer((void*)&ncdata, sizeof(ncdata)), yield);
 			typename proxied_socket_type::endpoint_type remote(ip::address_v6(ncdata.ipv6), ncdata.port);
 			try {
-				s = std::make_shared<proxied_socket_type>(uint64_t(h.id));
+				auto s = std::make_shared<proxied_socket_type>(uint64_t(h.id));
 				s->remember();
 				s->spawn_lifecycle(remote);
 			} catch (const system_error& e) {
-				collect_ostream(std::cerr) << s->description() << " : cannot open connection on proxy (" << e.what()
-				                           << ')' << std::endl;
+				collect_ostream(std::cerr) << "Cannot open connection to " << try_cast_ipv4(remote) << " on proxy ("
+				                           << e.what() << ')' << std::endl;
 			}
-		}
 			break;
-		case ops::data:
-		{
+		}
+		case ops::data: {
 			std::shared_ptr<char[]> data(new char[h.len]);
 			async_read(input, buffer(data.get(), h.len), yield);
-			if (s) s->write(std::move(data), h.len);
-		}
+			if (auto socket = proxied_socket_type::find(h.id)) socket->write(std::move(data), h.len);
 			break;
+		}
 		case ops::close_socket:
-			if (s) s->remote_eof(false);
+			if (auto socket = proxied_socket_type::find(h.id)) socket->remote_eof(false);
 			break;
 		default: invalid_data(client);
 	}
@@ -191,7 +188,8 @@ template<bool client> void read_remote(yield_context yield) try {
 				if (!ec && fionread.get() >= h.len)
 					if (auto socket = std::dynamic_pointer_cast<proxied_tcp>(proxied_tcp::find(h.id))) {
 						auto data = socket->allocate_write(h.len);
-						read(input, buffer(data, h.len));
+						if (input.read_some(buffer(data, h.len)) != h.len)
+							throw std::logic_error("stdin read returned less data than promised");
 						socket->commit_write();
 						break;
 					}

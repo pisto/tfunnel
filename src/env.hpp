@@ -32,8 +32,7 @@ void abort_output(uint16_t len);
 std::tuple<uint64_t, size_t> get_output_statistics();
 void exec_on_new_output_generation(std::function<void()> f);
 
-void send_udp_port_unreachable(boost::asio::io_context::strand& strand,
-                               boost::asio::ip::udp::endpoint local,
+void send_udp_port_unreachable(boost::asio::ip::udp::endpoint local,
                                boost::asio::ip::udp::endpoint remote);
 
 }

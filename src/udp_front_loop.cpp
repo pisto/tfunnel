@@ -38,7 +38,7 @@ struct proxied_udp_client: proxied_udp {
 	proxied_udp_client(ip::udp::socket&& s): proxied_udp(std::move(s)),
 	                                         endpoints(local_endpoint(), remote_endpoint()) {}
 
-	virtual void spawn_lifecycle(ip::udp::endpoint remote) {
+	virtual void spawn_lifecycle(ip::udp::endpoint remote) override {
 		wait_timeout();
 		proxied_udp::spawn_lifecycle(remote);
 	}
@@ -65,7 +65,7 @@ struct proxied_udp_client: proxied_udp {
 
 	void remote_eof(bool graceful) override {
 		if (!graceful) try {
-			send_udp_port_unreachable(strand_w, std::get<0>(endpoints), std::get<1>(endpoints));
+			send_udp_port_unreachable(std::get<0>(endpoints), std::get<1>(endpoints));
 		} catch (const system_error& e) {
 			collect_ostream(std::cerr) << "ICMP " << try_cast_ipv4(std::get<1>(endpoints)) << " <= "
 			                           << try_cast_ipv4(std::get<0>(endpoints))
@@ -75,7 +75,7 @@ struct proxied_udp_client: proxied_udp {
 		proxied_udp::remote_eof(graceful);
 		//make the socket linger for 1 sec to avoid reopening another UDP socket immediately if we keep receiving data
 		timeout.expires_after(std::chrono::seconds(1));
-		timeout.async_wait(bind_executor(strand_w, [this_ = shptr()](error_code){}));
+		timeout.async_wait([this_ = shptr()](error_code){});
 	}
 
 	void wait_timeout() {
@@ -86,8 +86,8 @@ struct proxied_udp_client: proxied_udp {
 			auto from_last_activity = clock::now() - this_->last_activity;
 			auto interval = this_->is_stream ? udp_timeout_stream : udp_timeout;
 			if (from_last_activity > std::chrono::seconds(interval)) {
-				this_->local_eof(false);
 				if (verbose) collect_ostream(std::cerr) << this_->description() << " : timed out" << std::endl;
+				this_->kill();
 				return;
 			}
 			this_->timeout.expires_at(this_->last_activity + std::chrono::seconds(interval));
@@ -161,22 +161,19 @@ void udp_front_loop(yield_context yield) {
 			local = { ip::make_address_v6(ip::v4_mapped, ipv4(ntohl(to_v4->sin_addr.s_addr))), ntohs(to_v4->sin_port) };
 		}
 		std::shared_ptr<proxied_udp_client> proxied;
-		try {
-			proxied = proxied_udp_client::find(local, remote);
-			if (!proxied) {
-				ip::udp::socket udpsock(asio, ip::udp::v6());
-				udpsock.set_option(socket_base::reuse_address(true));
-				if (!setsockopt(udpsock, SOL_SOCKET, SO_MARK, 3))
-					throw system_error(errno, generic_category(), "cannot set fwmark=3");
-				if (!setsockopt(udpsock, SOL_IPV6, IPV6_TRANSPARENT))
-					throw system_error(errno, generic_category(), "cannot set option IPV6_TRANSPARENT");
-				udpsock.bind(local);
-				udpsock.connect(remote);
-				proxied = std::make_shared<proxied_udp_client>(std::move(udpsock));
-				proxied->remember();
-				proxied->spawn_lifecycle({});
-				if (verbose) collect_ostream(std::cerr) << proxied->description() << " : opened" << std::endl;
-			}
+		proxied = proxied_udp_client::find(local, remote);
+		if (!proxied) try {
+			ip::udp::socket udpsock(asio, ip::udp::v6());
+			udpsock.set_option(socket_base::reuse_address(true));
+			if (!setsockopt(udpsock, SOL_SOCKET, SO_MARK, 3))
+				throw system_error(errno, generic_category(), "cannot set fwmark=3");
+			if (!setsockopt(udpsock, SOL_IPV6, IPV6_TRANSPARENT))
+				throw system_error(errno, generic_category(), "cannot set option IPV6_TRANSPARENT");
+			udpsock.bind(local);
+			udpsock.connect(remote);
+			proxied = std::make_shared<proxied_udp_client>(std::move(udpsock));
+			proxied->remember();
+			proxied->spawn_lifecycle({});
 		} catch (const system_error& e) {
 			collect_ostream(std::cerr) << "UDP " << try_cast_ipv4(remote) << " => "
 			                           << try_cast_ipv4(local) << " : cannot initialize connection (" << e.what() << ')'
