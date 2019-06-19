@@ -33,21 +33,24 @@ bool verbose = false;
 int main(int argc, char** argv) try {
 	using namespace tfunnel;
 	signal(SIGHUP, SIG_IGN);
-#ifndef PROXY_ONLY
 	{
+		#ifndef PROXY_ONLY
 		//default to netfilter NAT values if available
 		if (!(std::ifstream("/proc/sys/net/netfilter/nf_conntrack_udp_timeout") >> udp_timeout)) udp_timeout = 30;
 		if (!(std::ifstream("/proc/sys/net/netfilter/nf_conntrack_udp_timeout_stream") >> udp_timeout_stream))
 			udp_timeout_stream = 120;
+		#endif
 		using namespace boost::program_options;
 		options_description options("tfunnel options");
 		options.add_options()
 				("verbose,v", "enable verbose output")
+				#ifndef PROXY_ONLY
 				(",p", value(&port)->default_value(0), "start in client mode and listen on this port")
 				("udp_timeout", value(&udp_timeout)->default_value(udp_timeout),
 						"timeout for unanswered UDP connections")
 				("udp_timeout_stream", value(&udp_timeout_stream)->default_value(udp_timeout_stream),
 						"timeout for answered UDP connections")
+				#endif
 				("help", "print help");
 		variables_map vm;
 		store(parse_command_line(argc, argv, options), vm);
@@ -60,6 +63,7 @@ int main(int argc, char** argv) try {
 	}
 
 	io_context::strand input_strand(asio);
+#ifndef PROXY_ONLY
 	if (port) {
 		header h = header::handshake(true);
 		send_output(opcodes(h.opcode), h.id);

@@ -27,9 +27,9 @@ else()
         set(CMAKE_BUILD_TYPE Release)
     endif()
 
-    find_package(Boost REQUIRED system coroutine)
+    find_package(Boost REQUIRED program_options system coroutine)
     add_executable(tfunnel-proxy-only src/main.cpp src/remote.cpp)
     target_compile_definitions(tfunnel-proxy-only PRIVATE PROXY_ONLY=1)
-    target_link_libraries(tfunnel-proxy-only Boost::system Boost::coroutine)
+    target_link_libraries(tfunnel-proxy-only Boost::program_options Boost::system Boost::coroutine)
 
 endif()
