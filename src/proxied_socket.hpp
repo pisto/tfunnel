@@ -7,6 +7,7 @@
 #include <cmath>
 #include <chrono>
 #include <vector>
+#include <string>
 #include <stdexcept>
 #include <boost/asio.hpp>
 #include <boost/asio/spawn.hpp>
@@ -52,6 +53,8 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 	catch (const boost::system::system_error& e) {
 		send_output(opcodes::close_socket, id);
 	}
+
+	virtual std::string description() = 0;
 
 	//constructor for client end, use a socket new socket and generate an id
 	proxied_socket(socket&& s): socket(std::move(s)), id(index.v++), strand_w(asio), strand_r(asio) {
@@ -174,6 +177,14 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 
 	using proxied_socket::proxied_socket;
 
+	virtual std::string description() override {
+		std::ostringstream ret;
+		ret << "TCP ";
+		if (port) ret << try_cast_ipv4(remote_endpoint()) << " => " << try_cast_ipv4(local_endpoint());
+		else ret << "=> " << try_cast_ipv4(remote_endpoint());
+		return ret.str();
+	}
+
 	virtual void write(std::shared_ptr<char[]> data, size_t len) override {
 		writebuff_w.insert(writebuff_w.end(), data.get(), data.get() + len);
 		commit_write();
@@ -283,6 +294,14 @@ define_socket_opcodes(boost::asio::ip::udp::socket, UDP_NEW, UDP_DATA, UDP_CLOSE
 struct proxied_udp: proxied_socket<boost::asio::ip::udp::socket> {
 
 	using proxied_socket::proxied_socket;
+
+	virtual std::string description() override {
+		std::ostringstream ret;
+		ret << "UDP ";
+		if (port) ret << try_cast_ipv4(remote_endpoint()) << " => " << try_cast_ipv4(local_endpoint());
+		else ret << "=> " << try_cast_ipv4(remote_endpoint());
+		return ret.str();
+	}
 
 	virtual void spawn_lifecycle(boost::asio::ip::udp::endpoint remote) override {
 		if (!remote.address().is_unspecified()) {

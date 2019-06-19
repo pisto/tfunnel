@@ -87,9 +87,7 @@ struct proxied_udp_client: proxied_udp {
 			auto interval = this_->is_stream ? udp_timeout_stream : udp_timeout;
 			if (from_last_activity > std::chrono::seconds(interval)) {
 				this_->local_eof(false);
-				if (verbose) collect_ostream(std::cerr) << "UDP " << try_cast_ipv4(std::get<1>(this_->endpoints))
-				                                        << " => " << try_cast_ipv4(std::get<0>(this_->endpoints))
-				                                        << " : timed out" << std::endl;
+				if (verbose) collect_ostream(std::cerr) << this_->description() << " : timed out" << std::endl;
 				return;
 			}
 			this_->timeout.expires_at(this_->last_activity + std::chrono::seconds(interval));
@@ -177,8 +175,7 @@ void udp_front_loop(yield_context yield) {
 				proxied = std::make_shared<proxied_udp_client>(std::move(udpsock));
 				proxied->remember();
 				proxied->spawn_lifecycle({});
-				if (verbose) collect_ostream(std::cerr) << "UDP " << try_cast_ipv4(remote) << " => "
-				                                        << try_cast_ipv4(local) << " : opened" << std::endl;
+				if (verbose) collect_ostream(std::cerr) << proxied->description() << " : opened" << std::endl;
 			}
 		} catch (const system_error& e) {
 			collect_ostream(std::cerr) << "UDP " << try_cast_ipv4(remote) << " => "

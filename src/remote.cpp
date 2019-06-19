@@ -33,7 +33,8 @@ void consume_output() {
 
 void on_output_write(boost::system::error_code ec, size_t len) {
 	if (ec) {
-		collect_ostream(std::cerr) << "Fatal error: cannot send to remote: " << ec.message() << std::endl;
+		collect_ostream(std::cerr) << "Fatal error: cannot send to " << (port ? "proxy" : "client") << ": "
+		                           << ec.message() << std::endl;
 		_Exit(1);
 	}
 	outbuff_r_offset += len;
@@ -122,8 +123,8 @@ void handle_new_data_close(bool client, const header& h, yield_context yield) {
 				s->remember();
 				s->spawn_lifecycle(remote);
 			} catch (const system_error& e) {
-				collect_ostream(std::cerr) << "TCP => " << try_cast_ipv4(remote)
-				                           << " : cannot open connection on proxy (" << e.what() << ')' << std::endl;
+				collect_ostream(std::cerr) << s->description() << " : cannot open connection on proxy (" << e.what()
+				                           << ')' << std::endl;
 			}
 		}
 			break;
@@ -146,7 +147,8 @@ void handle_new_data_close(bool client, const header& h, yield_context yield) {
 template<bool client> void read_remote(yield_context yield) try {
 	header h;
 	async_read(input, buffer((void*)&h, sizeof(header)), yield);
-	if (h != header::handshake(!client)) throw std::runtime_error("remote does not speak the same protocol");
+	if (h != header::handshake(!client)) throw std::runtime_error(client ? "proxy does not speak the same protocol"
+	                                                                     : "client does not speak the same protocol");
 	while (1) {
 		async_read(input, buffer((void*)&h, sizeof(header)), yield);
 		#ifdef DEBUG_MESSAGES
