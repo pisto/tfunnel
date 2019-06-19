@@ -111,7 +111,7 @@ void send_udp_port_unreachable_v6(io_context::strand& strand,
 		throw system_error(errno, system_category(), "cannot set option IPV6_CHECKSUM on ICMP socket");
 
 	boost::asio::post(strand, [raw = std::move(raw), remote, local] {
-		struct [[gnu::packed]] icmp_udp_unreach {
+		struct [[gnu::packed]] {
 			icmp6_hdr icmp;
 			ip6_hdr ip;
 			udphdr udp;
