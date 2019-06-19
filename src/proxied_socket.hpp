@@ -179,9 +179,16 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 
 	virtual std::string description() override {
 		std::ostringstream ret;
-		ret << "TCP ";
-		if (port) ret << try_cast_ipv4(remote_endpoint()) << " => " << try_cast_ipv4(local_endpoint());
-		else ret << "=> " << try_cast_ipv4(remote_endpoint());
+		ret << "TCP(" << id << ") ";
+		try {
+			if (port) ret << try_cast_ipv4(remote_endpoint());
+			else ret << "[proxy]:" << local_endpoint().port();
+		}
+		catch(const boost::system::system_error&) { ret << '-'; }
+		ret << " => ";
+		try { ret << try_cast_ipv4(port ? local_endpoint() : remote_endpoint()); }
+		catch(const boost::system::system_error&) { ret << '-'; }
+		if (force_choked) ret << " (force_choked)";
 		return ret.str();
 	}
 
@@ -297,9 +304,15 @@ struct proxied_udp: proxied_socket<boost::asio::ip::udp::socket> {
 
 	virtual std::string description() override {
 		std::ostringstream ret;
-		ret << "UDP ";
-		if (port) ret << try_cast_ipv4(remote_endpoint()) << " => " << try_cast_ipv4(local_endpoint());
-		else ret << "=> " << try_cast_ipv4(remote_endpoint());
+		ret << "UDP(" << id << ") ";
+		try {
+			if (port) ret << try_cast_ipv4(remote_endpoint());
+			else ret << "[proxy]:" << local_endpoint().port();
+		}
+		catch(const boost::system::system_error&) { ret << '-'; }
+		ret << " => ";
+		try { ret << try_cast_ipv4(port ? local_endpoint() : remote_endpoint()); }
+		catch(const boost::system::system_error&) { ret << '-'; }
 		return ret.str();
 	}
 
