@@ -23,7 +23,7 @@ else()
         message(WARNING "Compiling for non-Linux OS: only the proxy end of tfunnel will be built")
     endif()
     if(NOT CMAKE_BUILD_TYPE)
-        message(status "Setting build type to 'Release' as none was specified.")
+        message(STATUS "Setting build type to 'Release' as none was specified.")
         set(CMAKE_BUILD_TYPE Release)
     endif()
 
