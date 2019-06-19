@@ -1,6 +1,7 @@
 #include <memory>
 #include <vector>
 #include <iostream>
+#include <forward_list>
 #include "env.hpp"
 #include "protocol.hpp"
 #include "proxied_socket.hpp"
@@ -16,13 +17,24 @@ namespace {
 
 std::vector<char> outbuff_r, outbuff_w;
 size_t outbuff_r_offset = 0;
+uint64_t generation = 0;
+std::forward_list<std::function<void()>> new_generation_execs;
+
+void new_output_generation() {
+	outbuff_r.clear();
+	outbuff_r_offset = 0;
+	std::swap(outbuff_r, outbuff_w);
+	generation++;
+	for (auto& f: new_generation_execs) f();
+	new_generation_execs.clear();
+}
 
 void on_output_write(boost::system::error_code ec, size_t len);
 
 void consume_output() {
 	auto size = outbuff_r.size() - outbuff_r_offset;
 	//in case stdout is slow, block on write to avoid OOM
-	if (size + outbuff_w.size() > 10 * 1024 * 1024) {
+	if (size + outbuff_w.size() > buffer_size) {
 		collect_ostream(std::cerr) << "Slow upload link to " << (port ? "proxy" : "client") << ", throttling"
 		                           << std::endl;
 		boost::system::error_code ec;
@@ -42,9 +54,7 @@ void on_output_write(boost::system::error_code ec, size_t len) {
 		consume_output();
 		return;
 	}
-	outbuff_r.clear();
-	outbuff_r_offset = 0;
-	std::swap(outbuff_r, outbuff_w);
+	new_output_generation();
 	if (outbuff_r.size()) consume_output();
 }
 
@@ -90,13 +100,22 @@ char* allocate_output(opcodes opcode, uint64_t id, uint16_t len) {
 
 void commit_output() {
 	if (outbuff_r.size()) return;
-	std::swap(outbuff_r, outbuff_w);
+	new_output_generation();
 	consume_output();
 }
 
 void abort_output(uint16_t len) {
 	outbuff_w.resize(outbuff_w.size() - sizeof(header) - len);
 }
+
+std::tuple<uint64_t, size_t> get_output_statistics() {
+	return std::make_tuple(generation, outbuff_w.size());
+}
+
+void exec_on_new_output_generation(std::function<void()> f) {
+	new_generation_execs.emplace_front(std::move(f));
+}
+
 
 
 //reading from remote
@@ -159,7 +178,7 @@ template<bool client> void read_remote(yield_context yield) try {
 			case TCP_CHOKE:
 			case TCP_UNCHOKE:
 				if (auto socket = std::dynamic_pointer_cast<proxied_tcp>(proxied_tcp::find(h.id)))
-					socket->choke(h.opcode == TCP_CHOKE);
+					socket->remote_choke(h.opcode == TCP_CHOKE);
 				break;
 			case TCP_EOF:
 				if (h.len) invalid_data(client);

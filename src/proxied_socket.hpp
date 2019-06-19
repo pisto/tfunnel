@@ -145,10 +145,24 @@ protected:
 
 	virtual void on_connect() {}
 	virtual bool on_read(size_t len, boost::asio::yield_context& yield) {
+		auto [generation, outstanding] = get_output_statistics();
+		if (generation != last_output_generation) {
+			my_outstanding = len;
+			last_output_generation = generation;
+		} else my_outstanding += len;
+		//choke if output is close to buffer_size, and our output is significant (> 10%)
+		if (outstanding > buffer_size / 2 && (10 * my_outstanding) / outstanding > 1) {
+			choke(true);
+			exec_on_new_output_generation([this_ = shptr()]{ this_->choke(false); });
+		}
+		bool blocked_once = false;
 		while (read_choked.blocked()) {
+			if (verbose && !blocked_once) collect_ostream(std::cerr) << description() << " : choked" << std::endl;
+			blocked_once = true;
 			boost::system::error_code ec;
 			read_choked.async_wait(yield[ec]);
 		}
+		if (verbose && blocked_once) collect_ostream(std::cerr) << description() << " : unchoked" << std::endl;
 		return true;
 	};
 	virtual void on_write(size_t len) {}
@@ -160,6 +174,8 @@ protected:
 
 private:
 	bool send_close_notice = true;
+	uint64_t last_output_generation = 0;
+	size_t my_outstanding = 0;
 	asio_semaphore got_remote_eof{ asio, true }, read_choked{ asio, false };
 	static inline std::unordered_map<uint64_t, std::weak_ptr<proxied_socket>> all;
 	static inline struct { uint64_t v : tfunnel::header::ID_BITS; } index;
@@ -192,6 +208,15 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 		return ret.str();
 	}
 
+	virtual void choke(bool on) override {
+		proxied_socket::choke(force_choked || on);
+	}
+
+	virtual void remote_choke(bool on) {
+		force_choked = on;
+		choke(on);
+	}
+
 	virtual void write(std::shared_ptr<char[]> data, size_t len) override {
 		writebuff_w.insert(writebuff_w.end(), data.get(), data.get() + len);
 		commit_write();
@@ -204,7 +229,7 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 	}
 
 	virtual void commit_write() {
-		if (writebuff_r.size() + writebuff_w.size() > 5 * 1024 * 1024 && !remote_choked_read) {
+		if (writebuff_r.size() + writebuff_w.size() > buffer_size && !remote_choked_read) {
 			send_output(TCP_CHOKE, id);
 			remote_choked_read = true;
 		}
@@ -216,6 +241,7 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 	}
 
 	virtual void remote_eof(bool graceful) override {
+		if (!graceful) remote_choke(false);
 		proxied_socket::remote_eof(graceful);
 		if (!graceful && !(local_graceful_eof && remote_graceful_eof))
 			//cause a TCP RST
@@ -244,6 +270,7 @@ protected:
 	}
 
 	virtual void local_eof(bool graceful) override {
+		remote_choke(false);
 		if (graceful) {
 			local_graceful_eof = true;
 			send_output(TCP_EOF, id);
@@ -256,7 +283,7 @@ private:
 	asio_semaphore writes_finished{ asio, strand_w };
 	std::vector<char> writebuff_r, writebuff_w;
 	size_t writebuff_r_offset = 0;
-	bool remote_choked_read = false;
+	bool remote_choked_read = false, force_choked = false;
 
 	void on_send(boost::system::error_code ec, size_t len) {
 		if (ec) {
@@ -275,7 +302,7 @@ private:
 		writebuff_r.clear();
 		writebuff_r_offset = 0;
 		std::swap(writebuff_r, writebuff_w);
-		if (writebuff_r.size() < 1024 * 1024 && remote_choked_read) {
+		if (writebuff_r.size() < buffer_size / 10 && remote_choked_read) {
 			send_output(TCP_UNCHOKE, id);
 			remote_choked_read = false;
 		}

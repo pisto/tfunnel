@@ -27,6 +27,7 @@ posix::stream_descriptor input(asio, STDIN_FILENO), output(asio, STDOUT_FILENO);
 //configuration
 namespace tfunnel {
 uint16_t port, udp_timeout, udp_timeout_stream;
+uint32_t buffer_size;
 bool verbose = false;
 }
 
@@ -51,6 +52,7 @@ int main(int argc, char** argv) try {
 				("udp_timeout_stream", value(&udp_timeout_stream)->default_value(udp_timeout_stream),
 						"timeout for answered UDP connections")
 				#endif
+				("buffer_size", value(&tfunnel::buffer_size)->default_value(10 * 1024 * 1024), "buffer size limit")
 				("help", "print help");
 		variables_map vm;
 		store(parse_command_line(argc, argv, options), vm);
@@ -60,6 +62,10 @@ int main(int argc, char** argv) try {
 			return 0;
 		}
 		if (vm.count("verbose")) verbose = true;
+		if (tfunnel::buffer_size < 64 * 1024) {
+			collect_ostream(std::cerr) << "buffer_size is too low, setting to 64KB" << std::endl;
+			tfunnel::buffer_size = 64 * 1024;
+		}
 	}
 
 	io_context::strand input_strand(asio);
