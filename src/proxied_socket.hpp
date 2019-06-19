@@ -233,7 +233,7 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 			writebuff_w.clear();
 			return;
 		}
-		if (writebuff_r.size() + writebuff_w.size() > buffer_size && !remote_choked_read) {
+		if (!remote_choked_read && writebuff_r.size() - writebuff_r_offset + writebuff_w.size() > buffer_size) {
 			send_output(TCP_CHOKE, id);
 			remote_choked_read = true;
 		}
@@ -304,6 +304,10 @@ private:
 		}
 		on_write(len);
 		writebuff_r_offset += len;
+		if (remote_choked_read && writebuff_r.size() - writebuff_r_offset + writebuff_w.size() < buffer_size / 10) {
+			send_output(TCP_UNCHOKE, id);
+			remote_choked_read = false;
+		}
 		if (writebuff_r.size() - writebuff_r_offset > 0) {
 			consume();
 			return;
@@ -311,10 +315,6 @@ private:
 		writebuff_r.clear();
 		writebuff_r_offset = 0;
 		std::swap(writebuff_r, writebuff_w);
-		if (writebuff_r.size() < buffer_size / 10 && remote_choked_read) {
-			send_output(TCP_UNCHOKE, id);
-			remote_choked_read = false;
-		}
 		if (writebuff_r.size()) consume();
 		else writes_finished.blocked(false);
 	}

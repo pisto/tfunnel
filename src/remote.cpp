@@ -34,7 +34,7 @@ void on_output_write(boost::system::error_code ec, size_t len);
 void consume_output() {
 	auto size = outbuff_r.size() - outbuff_r_offset;
 	//in case stdout is slow, block on write to avoid OOM
-	if (size + outbuff_w.size() > buffer_size) {
+	if (size > buffer_size) {
 		collect_ostream(std::cerr) << "Slow upload link to " << (port ? "proxy" : "client") << ", throttling"
 		                           << std::endl;
 		boost::system::error_code ec;
@@ -109,7 +109,7 @@ void abort_output(uint16_t len) {
 }
 
 std::tuple<uint64_t, size_t> get_output_statistics() {
-	return std::make_tuple(generation, outbuff_w.size());
+	return std::make_tuple(generation, outbuff_r.size() - outbuff_r_offset + outbuff_w.size());
 }
 
 void exec_on_new_output_generation(std::function<void()> f) {
