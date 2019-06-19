@@ -102,4 +102,4 @@ sudo make install     #set correct capabilities with setcap
 ```
 
 ## Proxy-only build
-On platforms other than Linux, only the *proxy* part of tfunnel is built, and the executable name is `tfunnel-proxy-only`. tfunnel should compile on all platforms supported by [Boost.Coroutine](https://www.boost.org/doc/libs/1_70_0/libs/context/doc/html/context/architectures.html).
+On platforms other than Linux, only the *proxy* part of tfunnel is built, and the executable name is `tfunnel-proxy-only`. This build can be forced also by passing the option `-DPROXY_ONLY=ON` during the cmake invocation. tfunnel should compile on all platforms supported by [Boost.Coroutine](https://www.boost.org/doc/libs/1_70_0/libs/context/doc/html/context/architectures.html).

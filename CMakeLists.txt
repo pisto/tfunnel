@@ -4,8 +4,9 @@ project(tfunnel)
 set(CMAKE_CXX_STANDARD 17)
 
 add_definitions(-DBOOST_ENABLE_ASSERT_HANDLER -DBOOST_COROUTINES_NO_DEPRECATION_WARNING)
+option(PROXY_ONLY "Build only the proxy" OFF)
 
-if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux" AND NOT "${PROXY_ONLY}")
 
     set(Boost_USE_STATIC_LIBS ON)
     find_package(Boost REQUIRED program_options system coroutine)
@@ -18,7 +19,9 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
 
 else()
 
-    message(WARNING "Compiling for non-Linux OS: only the proxy end of tfunnel will be built")
+    if (NOT "${PROXY_ONLY}")
+        message(WARNING "Compiling for non-Linux OS: only the proxy end of tfunnel will be built")
+    endif()
     if(NOT CMAKE_BUILD_TYPE)
         message(status "Setting build type to 'Release' as none was specified.")
         set(CMAKE_BUILD_TYPE Release)
