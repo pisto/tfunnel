@@ -36,7 +36,7 @@ template<typename socket> bool setsockopt(socket& s, int level, int opt, int val
 #include <iostream>
 #include <utility>
 
-struct collect_ostream: std::ostringstream {
+struct collect_ostream: private std::ostringstream {
 	std::ostream& out;
 
 	collect_ostream(std::ostream& out): out(out) {}
