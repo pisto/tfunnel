@@ -229,6 +229,10 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 	}
 
 	virtual void commit_write() {
+		if (dontwrite) {
+			writebuff_w.clear();
+			return;
+		}
 		if (writebuff_r.size() + writebuff_w.size() > buffer_size && !remote_choked_read) {
 			send_output(TCP_CHOKE, id);
 			remote_choked_read = true;
@@ -283,10 +287,15 @@ private:
 	asio_semaphore writes_finished{ asio, strand_w };
 	std::vector<char> writebuff_r, writebuff_w;
 	size_t writebuff_r_offset = 0;
-	bool remote_choked_read = false, force_choked = false;
+	bool remote_choked_read = false, force_choked = false, dontwrite = false;
 
 	void on_send(boost::system::error_code ec, size_t len) {
 		if (ec) {
+			dontwrite = true;
+			if (!remote_choked_read) {
+				send_output(TCP_CHOKE, id);
+				remote_choked_read = true;
+			}
 			writebuff_r.clear();
 			writebuff_w.clear();
 			writebuff_r_offset = 0;
