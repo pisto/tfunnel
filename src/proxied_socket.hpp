@@ -212,7 +212,7 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 		proxied_socket::choke(force_choked || on);
 	}
 
-	virtual void remote_choke(bool on) {
+	virtual void choked_from_remote(bool on) {
 		force_choked = on;
 		choke(on);
 	}
@@ -245,7 +245,7 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 	}
 
 	virtual void remote_eof(bool graceful) override {
-		if (!graceful) remote_choke(false);
+		if (!graceful) choked_from_remote(false);
 		proxied_socket::remote_eof(graceful);
 		if (!graceful && !(local_graceful_eof && remote_graceful_eof))
 			//cause a TCP RST
@@ -274,7 +274,7 @@ protected:
 	}
 
 	virtual void local_eof(bool graceful) override {
-		remote_choke(false);
+		choked_from_remote(false);
 		if (graceful) {
 			local_graceful_eof = true;
 			send_output(TCP_EOF, id);

@@ -178,7 +178,7 @@ template<bool client> void read_remote(yield_context yield) try {
 			case TCP_CHOKE:
 			case TCP_UNCHOKE:
 				if (auto socket = std::dynamic_pointer_cast<proxied_tcp>(proxied_tcp::find(h.id)))
-					socket->remote_choke(h.opcode == TCP_CHOKE);
+					socket->choked_from_remote(h.opcode == TCP_CHOKE);
 				break;
 			case TCP_EOF:
 				if (h.len) invalid_data(client);
