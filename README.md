@@ -22,7 +22,7 @@ tfunnel does not try to setup the firewall like sshuttle does. You have to setup
 
 All packets coming from the tfunnel *client* instance have a fwmark=3. This can be exploited to make the iptables ruleset easier.
 
-## Example: tfunnel over SSH
+## Example: tfunnel over SSH in an IPv4 network
 Here is the setup to tunnel all your local and forwarded IPv4 traffic through a tfunnel *client* instance, running on port 12300, that forwards all traffic to a *proxy* instance running on host:port `$SSH_HOST:$SSH_PORT`, over ssh.
 
 First of all make sure that tfunnel is available in `$PATH` in the remote host. You start and link the *client* and *proxy* with either the bash coproc feature,
@@ -72,11 +72,14 @@ iptables-restore <<EOF
     -A tfunnel-prerouting -m mark --mark 0x2/0x2 -j RETURN
     -A tfunnel-prerouting -j tfunnel-mark-proxied
     -A tfunnel-prerouting -m mark ! --mark 0x1/0x1 -j RETURN
-    -A tfunnel-prerouting -p tcp -m tcp -j TPROXY --on-port 12300 --on-ip 0.0.0.0 --tproxy-mark 0x0/0x0
-    -A tfunnel-prerouting -p udp -m udp -j TPROXY --on-port 12300 --on-ip 0.0.0.0 --tproxy-mark 0x0/0x0
+    -A tfunnel-prerouting -p tcp -m tcp -j TPROXY --on-port 12300
+    -A tfunnel-prerouting -p udp -m udp -j TPROXY --on-port 12300
     COMMIT
 EOF
 ```
+
+### IPv6
+Support for IPv6 has not been tested thoroughly yet. The above example should work on an IPv6 network with minimal changes. Just replace `ip rule`, `ip route` and `iptables-restore` with `ip -6 rule`, `ip -6 route` and `ip6tables-restore`, and take note that `-m addrtype --dst-type BROADCAST` is not valid in ip6tables. A single instance of tfunnel will suffice capturing IPv4 and IPv6 traffic.
 
 # Command line options
 ```
