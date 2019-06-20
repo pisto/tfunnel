@@ -400,16 +400,15 @@ struct proxied_udp: proxied_socket<boost::asio::ip::udp::socket> {
 		);
 	}
 
-protected:
-
-	virtual void local_eof(bool graceful, boost::asio::yield_context& yield) override {
-		if (!graceful) kill();
-		proxied_socket::local_eof(graceful, yield);
-	}
-
 	virtual void remote_eof(bool graceful) override {
 		if (!graceful) kill();
 		proxied_socket::remote_eof(graceful);
+	}
+
+protected:
+	virtual void local_eof(bool graceful, boost::asio::yield_context& yield) override {
+		if (!graceful) kill();
+		proxied_socket::local_eof(graceful, yield);
 	}
 
 };
