@@ -22,7 +22,8 @@ namespace tfunnel {
  *
  * This template should be inherited from the actual proxied socket concrete class. The template parameter 'socket'
  * is the concrete Boost.Asio socket type. You must provide a specialization for the traits socket_opcodes<socket>
- * with the protocol opcodes for a new socket (new_socket), data (data), and socket close (close_socket).
+ * with the protocol opcodes for a new socket (new_socket), data (data), socket close (close_socket) and a string
+ * representing the protocol.
  */
 
 template<typename socket> struct socket_opcodes {
@@ -88,6 +89,9 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 		return ret.str();
 	}
 
+	/*
+	 * Register this socket so that it can be referenced in the network code.
+	 */
 	virtual void remember() {
 		all.insert({ id, std::weak_ptr(this->shptr()) });
 	}
@@ -96,6 +100,12 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 		all.erase(uint64_t(id));
 	}
 
+	/*
+	 * Spawn a coroutine that represents the lifecycle of the socket.
+	 * The socket must first be connected (unless it is connected already), then it is read from
+	 * until an error or eof happens. Then the remote eof is waited for, in order to wait for all the
+	 * remote data, maintaining a shared pointer to the socket and delaying the deletion.
+	 */
 	virtual void spawn_lifecycle(typename socket::endpoint_type remote) {
 		boost::asio::spawn(lifecycle_strand, [this_ = this->shptr(), remote](boost::asio::yield_context yield) {
 			if (!remote.address().is_unspecified()) try {
@@ -166,6 +176,9 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 		got_remote_eof.blocked(false);
 	}
 
+	/*
+	 * Forcibly stop all activities that may hold a reference to this socket, so that it can be disposed.
+	 */
 	virtual void kill() {
 		forget();
 		choke(false);
@@ -189,6 +202,9 @@ protected:
 
 	virtual void on_connect() {}
 
+	/*
+	 * Implement here self choking when this socket is sending too much data to the output
+	 */
 	virtual bool on_read(size_t len, boost::asio::yield_context& yield) {
 		if (dead) throw boost::system::system_error(boost::asio::error::operation_aborted);
 		auto [generation, outstanding] = get_output_statistics();
@@ -253,11 +269,20 @@ struct proxied_tcp: proxied_socket<boost::asio::ip::tcp::socket> {
 		choke(on);
 	}
 
+	/*
+	 * Writing is implemented by holding two buffers, writebuff_w and writebuff_r. The First one can always be written
+	 * to, while the second is only read by async_write(). When writebuff_r is depleted, the buffers are swapped.
+	 */
 	virtual void write(std::shared_ptr<char[]> data, size_t len) override {
 		writebuff_w.insert(writebuff_w.end(), data.get(), data.get() + len);
 		commit_write();
 	}
 
+	/*
+	 * allocate_write() returns a pointer to some buffer space allocated in writebuff_w, to be filled by
+	 * data read from the remote end. After writing the data, call commit_write() to signal that the buffer
+	 * is filled. Note that between allocate_write() and commit_write() there must not be a coroutine yield.
+	 */
 	virtual char* allocate_write(size_t len) {
 		auto oldsize = writebuff_w.size();
 		writebuff_w.resize(oldsize + len);
@@ -319,6 +344,7 @@ private:
 		else {
 			kill();
 			set_option(boost::asio::socket_base::linger(true, 0));
+			//must close now otherwise Asio will reset the linger option in the destructor
 			close();
 		}
 	}

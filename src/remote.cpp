@@ -14,7 +14,15 @@ namespace tfunnel {
 //writing to remote
 namespace {
 
-
+/*
+ * Writing is implemented the same way proxied_tcp handles writes (cp. proxied_socket.hpp).
+ * Each time the read and write buffers outbuff_r and outbuff_w are swapped, the generation
+ * counter is incremented. The current generation and the total number of outstanding bytes in
+ * outbuff_w can be retrieved with get_output_statistics():
+ *      auto [generation, outstanding] = get_output_statistics();
+ * This allows the tracking of the size of outstanding writes of each proxied_socket, for the purpose
+ * of throttling fast connections that can overwhelm the output.
+ */
 std::vector<char> outbuff_r, outbuff_w;
 size_t outbuff_r_offset = 0;
 uint64_t generation = 0;
@@ -193,6 +201,7 @@ template<bool client> void read_remote(yield_context yield) try {
 						socket->commit_write();
 						break;
 					}
+				//fallthrough if we cannot read all the data directly in the buffer provided by allocate_write()
 			}
 			case TCP_NEW:
 			case TCP_CLOSE:
