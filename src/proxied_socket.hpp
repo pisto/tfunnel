@@ -229,7 +229,7 @@ protected:
 		if (verbose && blocked_once) collect_ostream(std::cerr) << description() << " : unchoked" << std::endl;
 		if (dead) throw boost::system::system_error(boost::asio::error::operation_aborted);
 		return true;
-	};
+	}
 
 	virtual void on_write(size_t len) {}
 
