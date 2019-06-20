@@ -28,6 +28,8 @@ template<typename T> uint16_t in_checksum(const T& payload) {
 void send_udp_port_unreachable_v4(const boost::asio::ip::udp::endpoint& local,
                                   const boost::asio::ip::udp::endpoint& remote) {
 	boost::asio::ip::icmp::socket raw(asio, boost::asio::ip::icmp::v4());
+	if (!setsockopt(raw, SOL_SOCKET, SO_MARK, 3))
+		throw system_error(errno, generic_category(), "cannot set fwmark=3 on ICMP socket");
 	if (!setsockopt(raw, SOL_IP, IP_TRANSPARENT))
 		throw system_error(errno, generic_category(), "cannot set option IP_TRANSPARENT on raw socket");
 
