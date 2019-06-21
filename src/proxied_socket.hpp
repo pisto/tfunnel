@@ -43,15 +43,15 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 	using opcodes = socket_opcodes<socket>;
 	using socket_type = socket;
 	using protocol_type = typename socket::protocol_type;
-	const uint64_t id : tfunnel::header::ID_BITS;
+	const uint16_t id : tfunnel::header::ID_BITS;
 
-	static auto find(uint64_t id) {
+	static auto find(uint16_t id) {
 		auto found = all.find(id);
 		return found != all.end() ? found->second.lock() : nullptr;
 	}
 
 	//constructor for proxy end, set the id and create a new socket
-	proxied_socket(uint64_t id) try : socket(asio, protocol_type::v6()), id(id) {
+	proxied_socket(uint16_t id) try : socket(asio, protocol_type::v6()), id(id) {
 		if (verbose) collect_ostream(std::cerr) << description() << " : opened" << std::endl;
 	}
 	catch (const boost::system::system_error& e) {
@@ -97,7 +97,7 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 	}
 
 	virtual void forget() {
-		all.erase(uint64_t(id));
+		all.erase(uint16_t(id));
 	}
 
 	/*
@@ -187,7 +187,7 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 	}
 
 	virtual ~proxied_socket() {
-		all.erase(uint64_t(id));
+		all.erase(uint16_t(id));
 		if (send_close_notice) send_output(opcodes::close_socket, id);
 		if (verbose) collect_ostream(std::cerr) << description() << " : closed" << std::endl;
 	}
@@ -244,8 +244,8 @@ private:
 	uint64_t last_output_generation = 0;
 	size_t my_outstanding = 0;
 	asio_semaphore read_choked{ asio, false };
-	static inline std::unordered_map<uint64_t, std::weak_ptr<proxied_socket>> all;
-	static inline struct { uint64_t v : tfunnel::header::ID_BITS; } index;
+	static inline std::unordered_map<uint16_t, std::weak_ptr<proxied_socket>> all;
+	static inline struct { uint16_t v : tfunnel::header::ID_BITS; } index;
 };
 
 

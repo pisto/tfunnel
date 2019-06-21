@@ -73,7 +73,7 @@ uint64_t sendid = 0;
 }
 
 
-void send_output(opcodes opcode, uint64_t id, uint16_t len, const void* data) {
+void send_output(opcodes opcode, uint16_t id, uint16_t len, const void* data) {
 	#ifdef DEBUG_MESSAGES
 	collect_ostream(std::cerr) << (port ? "cs(" : "ps(") << sendid++ << ',' << int(opcode) << ',' << id << ',' << len << ')' << std::endl;
 	#endif
@@ -89,7 +89,7 @@ void send_output(opcodes opcode, uint64_t id, uint16_t len, const void* data) {
 	commit_output();
 }
 
-char* allocate_output(opcodes opcode, uint64_t id, uint16_t len) {
+char* allocate_output(opcodes opcode, uint16_t id, uint16_t len) {
 	#ifdef DEBUG_MESSAGES
 	collect_ostream(std::cerr) << (port ? "cs(" : "ps(") << sendid++ << ',' << int(opcode) << ',' << id << ',' << len << ')' << std::endl;
 	#endif
@@ -144,7 +144,7 @@ void handle_new_data_close(bool client, const header& h, yield_context& yield) {
 			async_read(input, buffer((void*)&ncdata, sizeof(ncdata)), yield);
 			typename proxied_socket_type::endpoint_type remote(ip::address_v6(ncdata.ipv6), ncdata.port);
 			try {
-				auto s = std::make_shared<proxied_socket_type>(uint64_t(h.id));
+				auto s = std::make_shared<proxied_socket_type>(uint16_t(h.id));
 				s->remember();
 				s->spawn_lifecycle(remote);
 			} catch (const system_error& e) {
