@@ -27,12 +27,12 @@ Here is the setup to tunnel all your local and forwarded IPv4 traffic through a 
 
 First of all make sure that tfunnel is available in `$PATH` in the remote host. You start and link the *client* and *proxy* with either the bash coproc feature,
 ```
-coproc tfunnel { stdbuf -i0 -o0 tfunnel -p 12300; }
-stdbuf -i0 -o0 ssh $SSH_HOST stdbuf -i0 -o0 tfunnel >&"${tfunnel[1]}" <&"${tfunnel[0]}"
+coproc tfunnel { tfunnel -p 12300; }
+ssh -p $SSH_PORT user@$SSH_HOST tfunnel >&"${tfunnel[1]}" <&"${tfunnel[0]}"
 ```
 or with the socat `EXEC:` target:
 ```
-socat EXEC:'tfunnel -p 12300' EXEC:'ssh $SSH_HOST stdbuf -i0 -o0 tfunnel'
+socat EXEC:'tfunnel -p 12300' EXEC:'ssh -p $SSH_PORT user@$SSH_HOST tfunnel'
 ```
 
 Now packets of interest must be intercepted by the *client* instance. We use here source based routing with packet marks. All packets of interest are marked with fwmark=1, and they are looped back to the *client* instance running locally:
