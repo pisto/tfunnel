@@ -88,9 +88,12 @@ tfunnel options:
   -p arg (=0)                     start in client mode and listen on this port
   --udp_timeout arg (=30)         timeout for unanswered UDP connections
   --udp_timeout_stream arg (=120) timeout for answered UDP connections
+  --buffer_size arg (=10485760)   buffer size limit
   --help                          print help
 ```
 The udp options control the timeouts for the UDP sockets that are created to forward the traffic. They default to the values of netfilter (`/proc/sys/net/netfilter/nf_conntrack_udp_timeout` and `/proc/sys/net/netfilter/nf_conntrack_udp_timeout_stream`).
+
+The `--buffer_size` is used in some heuristic to limit the size of some internal buffers. It is necessary because may be situations where the *proxy* instance of tfunnel is receiving a lot of data quickly (which is likely as it may reside in a cloud instance), but the link to the applications is slower: if this situation persist for too long and the transferred data is large, OOM conditions may be triggered in the *proxy* end. You may need to adjust this value for a tradeoff between responsiveness and tolerance to bad network conditions between your applications and the *client* instance of tfunnel, or from that to the *proxy* instance.
 
 # Building
 Requirements are Boost.Asio, Boost.Program\_options, Boost.Coroutine . Build system is CMake:
