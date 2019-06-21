@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
+#include <fcntl.h>
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
 #include "env.hpp"
@@ -69,6 +70,15 @@ int main(int argc, char** argv) try {
 	}
 
 	io_context::strand input_strand(asio);
+#if defined(F_GETPIPE_SZ) && defined(F_SETPIPE_SZ)
+	auto setpipesize = [](int fd) {
+		if (auto currsize = fcntl(fd, F_GETPIPE_SZ);
+				currsize > 0 && uint32_t(currsize) < std::min(tfunnel::buffer_size, uint32_t(INT_MAX)))
+			fcntl(fd, F_SETPIPE_SZ, int(tfunnel::buffer_size));
+	};
+	setpipesize(output.native_handle());
+	setpipesize(input.native_handle());
+#endif
 #ifndef PROXY_ONLY
 	if (port) {
 		header h = header::handshake(true);
