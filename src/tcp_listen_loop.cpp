@@ -24,37 +24,36 @@ void tcp_listen_loop(yield_context yield) {
 	 * TCP accept loop. Nothing complicated here, except error handling (no idea about all the possible
 	 * errors returned).
 	 */
-	while (1)
+	while (true) try {
+		ip::tcp::socket accepted(asio);
+		tcp_listen.async_accept(accepted, yield);
+		auto remote = accepted.remote_endpoint(), local = accepted.local_endpoint();
 		try {
-			ip::tcp::socket accepted(asio);
-			tcp_listen.async_accept(accepted, yield);
-			auto remote = accepted.remote_endpoint(), local = accepted.local_endpoint();
-			try {
-				if (!setsockopt(accepted, SOL_SOCKET, SO_MARK, 3))
-					throw system_error(errno, generic_category(), "cannot set fwmark=3");
-				auto proxied = std::make_shared<proxied_tcp>(std::move(accepted));
-				proxied->remember();
-				proxied->spawn_lifecycle({});
-			} catch (const system_error& e) {
-				collect_ostream(std::cerr) << "TCP " << try_cast_ipv4(remote) << " => " << try_cast_ipv4(local)
-				                           << " : error opening (" << e.what() << ')' << std::endl;
-				continue;
-			}
+			if (!setsockopt(accepted, SOL_SOCKET, SO_MARK, 3))
+				throw system_error(errno, generic_category(), "cannot set fwmark=3");
+			auto proxied = std::make_shared<proxied_tcp>(std::move(accepted));
+			proxied->remember();
+			proxied->spawn_lifecycle({});
 		} catch (const system_error& e) {
-			using namespace boost::asio::error;
-			switch (e.code().value()) {
-				case operation_aborted: return;
-				case no_descriptors:
-				case no_permission:
-				case connection_aborted:
-				case network_down:
-				case host_unreachable:
-				case network_unreachable:
-					collect_ostream(std::cerr) << "TCP : cannot accept connection (" << e.what() << ')' << std::endl;
-					break;
-				default: throw;
-			}
+			collect_ostream(std::cerr) << "TCP " << try_cast_ipv4(remote) << " => " << try_cast_ipv4(local)
+			                           << " : error opening (" << e.what() << ')' << std::endl;
+			continue;
 		}
+	} catch (const system_error& e) {
+		using namespace boost::asio::error;
+		switch (e.code().value()) {
+			case operation_aborted: return;
+			case no_descriptors:
+			case no_permission:
+			case connection_aborted:
+			case network_down:
+			case host_unreachable:
+			case network_unreachable:
+				collect_ostream(std::cerr) << "TCP : cannot accept connection (" << e.what() << ')' << std::endl;
+				break;
+			default: throw;
+		}
+	}
 }
 
 }

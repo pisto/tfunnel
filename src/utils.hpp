@@ -23,7 +23,7 @@ template<typename Proto> auto try_cast_ipv4(boost::asio::ip::basic_endpoint<Prot
 template<typename socket> bool setsockopt(socket& s, int level, int opt, int value = 1) {
 	int fd = s.native_handle();
 	return !setsockopt(fd, level, opt, &value, sizeof(value));
-};
+}
 
 #endif
 
@@ -40,7 +40,7 @@ struct collect_ostream: private std::ostringstream {
 	std::ostream& out;
 
 	collect_ostream(std::ostream& out): out(out) {}
-	~collect_ostream() { out << str(); }
+	virtual ~collect_ostream() { out << str(); }
 
 	template<typename T> std::ostream& operator<<(T&& t) const {
 		return static_cast<std::ostringstream&>(const_cast<collect_ostream&>(*this)) << std::forward<T>(t);

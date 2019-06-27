@@ -38,7 +38,7 @@ struct proxied_udp_client: proxied_udp {
 	proxied_udp_client(ip::udp::socket&& s): proxied_udp(std::move(s)),
 	                                         endpoints(local_endpoint(), remote_endpoint()) {}
 
-	virtual void spawn_lifecycle(ip::udp::endpoint remote) override {
+	void spawn_lifecycle(ip::udp::endpoint remote) override {
 		wait_timeout();
 		proxied_udp::spawn_lifecycle(remote);
 	}
@@ -121,7 +121,7 @@ void udp_front_loop(yield_context yield) {
 	 * creation and multiple datagram being sent on a new connection, so this loop needs to lookup sockets
 	 * by endpoints tuple, and possibly send datagrams over an already existing proxied socket.
 	 */
-	while (1) try {
+	while (true) try {
 		iovec iovec_buff;
 		static char ancillary[1024];
 		sockaddr_in6 from, * to_v6 = 0;

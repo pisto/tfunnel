@@ -53,22 +53,18 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 	//constructor for proxy end, set the id and create a new socket
 	proxied_socket(uint16_t id) try : socket(asio, protocol_type::v6()), id(id) {
 		if (verbose) collect_ostream(std::cerr) << description() << " : opened" << std::endl;
-	}
-	catch (const boost::system::system_error& e) {
+	} catch (const boost::system::system_error& e) {
 		send_output(opcodes::close_socket, id);
-		if (verbose) collect_ostream(std::cerr) << description() << " : aborted(" << e.what() << ')' << std::endl;
+		if (verbose) collect_ostream(std::cerr) << opcodes::protoname << '(' << id << ") : aborted(" << e.what() << ')'
+		                                        << std::endl;
 	}
 
 	//constructor for client end, use a socket new socket and generate an id
-	proxied_socket(socket&& s) try : socket(std::move(s)), id(index.v++) {
+	proxied_socket(socket&& s): socket(std::move(s)), id(index.v++) {
 		auto ep = this->local_endpoint();
 		new_connection_data ncdata{ ep.address().to_v6().to_bytes(), ep.port() };
 		send_output(opcodes::new_socket, id, sizeof(ncdata), &ncdata);
 		if (verbose) collect_ostream(std::cerr) << description() << " : opened" << std::endl;
-	}
-	catch (const boost::system::system_error& e) {
-		send_output(opcodes::close_socket, id);
-		if (verbose) collect_ostream(std::cerr) << description() << " : aborted" << std::endl;
 	}
 
 	virtual std::string description() {
@@ -120,7 +116,7 @@ template<typename socket> struct proxied_socket: std::enable_shared_from_this<pr
 			this_->on_connect();
 			bool graceful_eof = false;
 			try {
-				while (1) {
+				while (true) {
 					this_->async_wait(boost::asio::socket_base::wait_read, yield);
 					size_t datalen = std::min(this_->available(), header::MAX_LEN);
 					if (!this_->on_read(datalen, yield)) break;
@@ -379,7 +375,7 @@ private:
 		writebuff_r.clear();
 		writebuff_r_offset = 0;
 		std::swap(writebuff_r, writebuff_w);
-		if (writebuff_r.size()) consume();
+		if (!writebuff_r.empty()) consume();
 		else check_forward_eof();
 	}
 

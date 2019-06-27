@@ -63,7 +63,7 @@ void on_output_write(boost::system::error_code ec, size_t len) {
 		return;
 	}
 	new_output_generation();
-	if (outbuff_r.size()) consume_output();
+	if (!outbuff_r.empty()) consume_output();
 }
 
 #ifdef DEBUG_MESSAGES
@@ -107,7 +107,7 @@ char* allocate_output(opcodes opcode, uint16_t id, uint16_t len) {
 }
 
 void commit_output() {
-	if (outbuff_r.size()) return;
+	if (!outbuff_r.empty()) return;
 	new_output_generation();
 	consume_output();
 }
@@ -173,7 +173,7 @@ template<bool client> void read_remote(yield_context yield) try {
 	async_read(input, buffer((void*)&h, sizeof(header)), yield);
 	if (h != header::handshake(!client)) throw std::runtime_error(client ? "proxy does not speak the same protocol"
 	                                                                     : "client does not speak the same protocol");
-	while (1) {
+	while (true) {
 		async_read(input, buffer((void*)&h, sizeof(header)), yield);
 		#ifdef DEBUG_MESSAGES
 		static uint64_t recvid = 1;
