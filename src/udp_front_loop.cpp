@@ -95,7 +95,7 @@ struct proxied_udp_client: proxied_udp {
 		});
 	}
 
-	~proxied_udp_client() {
+	virtual ~proxied_udp_client() {
 		tuples_all.erase(endpoints);
 	}
 
