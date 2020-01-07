@@ -39,31 +39,28 @@ void send_udp_port_unreachable_v4(const boost::asio::ip::udp::endpoint& local,
 		udphdr udp;
 	} packet;
 	memset(&packet, 0, sizeof(packet));
-	auto icmp = &packet.icmp;
-	auto ip = &packet.ip;
-	auto udp = &packet.udp;
-	icmp->type = ICMP_DEST_UNREACH;
-	icmp->code = ICMP_PORT_UNREACH;
-	ip->version = 4;
-	ip->ihl = sizeof(*ip) / 4;
-	ip->tot_len = htons(sizeof(*ip) + sizeof(*udp));
-	ip->ttl = 255;
-	ip->protocol = IPPROTO_UDP;
-	ip->saddr = htonl(remote.address().to_v4().to_uint());
-	ip->daddr = htonl(local.address().to_v4().to_uint());
-	udp->source = htons(remote.port());
-	udp->dest = htons(local.port());
-	udp->len = htons(sizeof(*udp));
+	packet.icmp.type = ICMP_DEST_UNREACH;
+	packet.icmp.code = ICMP_PORT_UNREACH;
+	packet.ip.version = 4;
+	packet.ip.ihl = sizeof(packet.ip) / 4;
+	packet.ip.tot_len = htons(sizeof(packet.ip) + sizeof(packet.udp));
+	packet.ip.ttl = 255;
+	packet.ip.protocol = IPPROTO_UDP;
+	packet.ip.saddr = htonl(remote.address().to_v4().to_uint());
+	packet.ip.daddr = htonl(local.address().to_v4().to_uint());
+	packet.udp.source = htons(remote.port());
+	packet.udp.dest = htons(local.port());
+	packet.udp.len = htons(sizeof(packet.udp));
 
-	ip->check = in_checksum(*ip);
-	icmp->checksum = in_checksum(packet);
+	packet.ip.check = in_checksum(packet.ip);
+	packet.icmp.checksum = in_checksum(packet);
 
 	msghdr msgh;
 	memset(&msgh, 0, sizeof(msgh));
 
 	sockaddr_in to;
 	memset(&to, 0, sizeof(to));
-	to.sin_addr.s_addr = ip->saddr;
+	to.sin_addr.s_addr = packet.ip.saddr;
 	msgh.msg_name = &to;
 	msgh.msg_namelen = sizeof(to);
 
@@ -87,7 +84,7 @@ void send_udp_port_unreachable_v4(const boost::asio::ip::udp::endpoint& local,
 	cmsg->cmsg_type = IP_PKTINFO;
 	cmsg->cmsg_len = CMSG_LEN(sizeof(in_pktinfo));
 	auto from = (in_pktinfo*)CMSG_DATA(cmsg);
-	from->ipi_spec_dst.s_addr = ip->daddr;
+	from->ipi_spec_dst.s_addr = packet.ip.daddr;
 
 	if (sendmsg(raw.native_handle(), &msgh, 0) == -1) {
 		int errno_now = errno;
@@ -114,21 +111,18 @@ void send_udp_port_unreachable_v6(const boost::asio::ip::udp::endpoint& local,
 		udphdr udp;
 	} packet;
 	memset(&packet, 0, sizeof(packet));
-	auto icmp = &packet.icmp;
-	auto ip = &packet.ip;
-	auto udp = &packet.udp;
-	icmp->icmp6_type = ICMP6_DST_UNREACH;
-	icmp->icmp6_code = ICMP6_DST_UNREACH_NOPORT;
-	ip->ip6_flow = 0x60;
-	ip->ip6_plen = htons(sizeof(*udp));
-	ip->ip6_nxt = IPPROTO_UDP;
-	ip->ip6_hlim = 255;
+	packet.icmp.icmp6_type = ICMP6_DST_UNREACH;
+	packet.icmp.icmp6_code = ICMP6_DST_UNREACH_NOPORT;
+	packet.ip.ip6_flow = 0x60;
+	packet.ip.ip6_plen = htons(sizeof(packet.udp));
+	packet.ip.ip6_nxt = IPPROTO_UDP;
+	packet.ip.ip6_hlim = 255;
 	auto ip6_src = remote.address().to_v6().to_bytes(), ip6_dst = local.address().to_v6().to_bytes();
-	memcpy(&ip->ip6_src, &ip6_src, sizeof(ip->ip6_src));
-	memcpy(&ip->ip6_dst, &ip6_dst, sizeof(ip->ip6_dst));
-	udp->source = htons(remote.port());
-	udp->dest = htons(local.port());
-	udp->len = htons(sizeof(*udp));
+	memcpy(&packet.ip.ip6_src, &ip6_src, sizeof(packet.ip.ip6_src));
+	memcpy(&packet.ip.ip6_dst, &ip6_dst, sizeof(packet.ip.ip6_dst));
+	packet.udp.source = htons(remote.port());
+	packet.udp.dest = htons(local.port());
+	packet.udp.len = htons(sizeof(packet.udp));
 
 	struct [[gnu::packed]] {
 		boost::asio::ip::address_v6::bytes_type src, dst;
@@ -139,17 +133,17 @@ void send_udp_port_unreachable_v6(const boost::asio::ip::udp::endpoint& local,
 	memset(&ipv6_pseudo, 0, sizeof(ipv6_pseudo));
 	ipv6_pseudo.src = ip6_src;
 	ipv6_pseudo.dst = ip6_dst;
-	ipv6_pseudo.udplen = htonl(sizeof(*udp));
+	ipv6_pseudo.udplen = htonl(sizeof(packet.udp));
 	ipv6_pseudo.next_header = IPPROTO_UDP;
-	ipv6_pseudo.udp = *udp;
-	udp->check = in_checksum(ipv6_pseudo);
+	ipv6_pseudo.udp = packet.udp;
+	packet.udp.check = in_checksum(ipv6_pseudo);
 
 	msghdr msgh;
 	memset(&msgh, 0, sizeof(msgh));
 
 	sockaddr_in6 to;
 	memset(&to, 0, sizeof(to));
-	memcpy(&to.sin6_addr.s6_addr, &ip->ip6_src, sizeof(to.sin6_addr.s6_addr));
+	memcpy(&to.sin6_addr.s6_addr, &packet.ip.ip6_src, sizeof(to.sin6_addr.s6_addr));
 	msgh.msg_name = &to;
 	msgh.msg_namelen = sizeof(to);
 
@@ -173,7 +167,7 @@ void send_udp_port_unreachable_v6(const boost::asio::ip::udp::endpoint& local,
 	cmsg->cmsg_type = IPV6_PKTINFO;
 	cmsg->cmsg_len = CMSG_LEN(sizeof(in6_pktinfo));
 	auto from = (in6_pktinfo*)CMSG_DATA(cmsg);
-	memcpy(&from->ipi6_addr.s6_addr, &ip->ip6_dst, sizeof(from->ipi6_addr.s6_addr));
+	memcpy(&from->ipi6_addr.s6_addr, &packet.ip.ip6_dst, sizeof(from->ipi6_addr.s6_addr));
 
 	if (sendmsg(raw.native_handle(), &msgh, 0) == -1) {
 		int errno_now = errno;
